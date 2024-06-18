@@ -2,12 +2,23 @@
 #include <stdio.h>
 
 #include "AacBitReader.h"
+#include "AacScalefactorDecoder.h"
 
 #include "AacDecoder.h"
 
 #define AAC_MAX_SFB_COUNT     51
 
+#define AAC_MAX_WINDOW_COUNT  8
+
 #define AAC_MAX_WINDOW_GROUPS 8
+
+#define AAC_MAX_PULSE_COUNT   4
+
+#define AAC_MAX_TNS_ORDER_LONG_MAIN 20  // Long window, main profile
+#define AAC_MAX_TNS_ORDER_LONG_LC   12  // Long window, low-complexity profile
+#define AAC_MAX_TNS_ORDER_SHORT     7   // Short window, any profile
+
+#define AAC_MAX_TNS_FILTER_COUNT    3
 
 enum AacElementId
 {
@@ -28,6 +39,21 @@ enum AacExtensionType
   AAC_EXT_DYNAMIC_RANGE = 0xB,  // Dynamic range control
   AAC_EXT_SBR_DATA      = 0xD,  // SBR enhancement
   AAC_EXT_SBR_DATA_CRC  = 0xE,  // SBR enhancement with CRC
+};
+
+enum
+{
+  AAC_HCB_ZERO       = 0,   // ZERO_HCB
+  AAC_HCB_FIRST_PAIR = 5,   // FIRST_PAIR_HCB
+  AAC_HCB_ESC        = 11,  // ESC_HCB
+  AAC_HCB_INTENSITY2 = 14,  // INTENSITY_HCB2
+  AAC_HCB_INTENSITY  = 15,  // INTENSITY_HCB
+};
+
+enum
+{
+  AAC_TNS_FILTER_FLAG_DOWNWARD = 0x01,
+  AAC_TNS_FILTER_FLAG_COMPRESS = 0x02,
 };
 
 struct scalefactorBandInfo
@@ -158,6 +184,7 @@ struct AacSectionInfo
 
   uint8_t      sfbCodebooks[AAC_MAX_WINDOW_GROUPS][AAC_MAX_SFB_COUNT];
 
+  // TODO: Substruct
   uint8_t      sectionCounts[AAC_MAX_WINDOW_GROUPS];  // For each group, the number of subband "sections"
   uint8_t      sectionStarts[AAC_MAX_WINDOW_GROUPS][AAC_MAX_SFB_COUNT];  // For each group, for each section, the starting scalefilter band index
   uint8_t      sectionLengths[AAC_MAX_WINDOW_GROUPS][AAC_MAX_SFB_COUNT];  // For each group, for each section, the number of scalefilter bands
@@ -168,11 +195,31 @@ struct AacScalefactorInfo
   uint8_t scalefactors[AAC_MAX_WINDOW_GROUPS][AAC_MAX_SFB_COUNT];  // For each group, for each scalefactor band, the scalefactor [0..255]
 };
 
+struct AacPulseInfo
+{
+  uint8_t pulseCount;
+  uint8_t pulseSfbStart;
+  struct { uint8_t offset; uint8_t amplitude; } pulses[AAC_MAX_PULSE_COUNT];
+};
+
+struct AacTnsInfo
+{
+  uint8_t filterCount[AAC_MAX_WINDOW_COUNT];  // For each window, the number of filters [0..3]
+  uint8_t coefficientBits[AAC_MAX_WINDOW_COUNT];  // [3..4]
+
+  struct { uint8_t length; uint8_t order; uint8_t flags; uint8_t coefficients[AAC_MAX_TNS_ORDER_LONG_MAIN]; } filters[AAC_MAX_WINDOW_COUNT][AAC_MAX_TNS_FILTER_COUNT];  // For each window, for each filter, the filter info
+};
+
 struct AacDecodeInfo
 {
+  unsigned int        identifier;
+  uint8_t             globalGain;
+
   AacIcsInfo         *ics;
   AacSectionInfo     *section;
-  AacScalefactorInfo *sect;
+  AacScalefactorInfo *sf;
+  AacPulseInfo        pulse;
+  AacTnsInfo          tns;
 };
 
 // ics_info
@@ -281,15 +328,157 @@ bool AacDecoder::decodeSectionInfo(AacBitReader *reader, const AacIcsInfo *ics, 
 }
 
 // scale_factor_data
-bool AacDecoder::decodeScalefactorInfo(AacBitReader *reader, const AacSectionInfo *sect, AacScalefactorInfo *sf)
+// § 8.3.2.5
+bool AacDecoder::decodeScalefactorInfo(AacBitReader *reader, AacDecodeInfo *info)
 {
+  uint8_t sf = info->globalGain;
+
+  auto sfd = AacScalefactorDecoder(reader);
+
   // For each group, read scalefactors for each scalefactor band
-  for (unsigned int g = 0; g < sect->windowGroupCount; g++)
+  for (unsigned int g = 0; g < info->section->windowGroupCount; g++)
   {
-//    for (unsigned int sfb = 0; sfb < 
+    for (unsigned int sfb = 0; sfb < info->ics->sfbCount; sfb++)
+    {
+      unsigned int hcb = info->section->sfbCodebooks[g][sfb];
+      if (hcb == AAC_HCB_ZERO)
+        continue;  // Not an active band
+
+      if ((hcb == AAC_HCB_INTENSITY) || (hcb == AAC_HCB_INTENSITY2))
+      {
+        info->sf->scalefactors[g][sfb] = 0;
+        abort();  // TODO: Don't we have to read dpcm_is_position[] here?
+        continue;  // Intensity stereo doesn't code scalefactors
+      }
+
+      int sfOffset;
+      if (!sfd.decode(&sfOffset))
+        return false;  // Huffman decode failure
+
+      sfOffset += -60;  // TODO: Let's combine the -60 offset into the table data
+      if ((sfOffset < 0) && (-sfOffset > sf))
+        return false;  // Would underflow
+      else if ((sfOffset > 0) && ((sfOffset + sf) > UINT8_MAX))
+         return false;  // Would overflow
+
+      sf += sfOffset;
+      info->sf->scalefactors[g][sfb] = sf;
+      printf("g %d  sfb %d  sfOffset %d  sf %d\n", g, sfb, sfOffset, sf);
+    }
   }
 
-  printf("HA HA!\n");
+  return true;
+}
+
+// pulse_data
+bool AacDecoder::decodePulseInfo(AacBitReader *reader, AacDecodeInfo *info)
+{
+  bool hasPulses = reader->readUInt(1);
+  if (!hasPulses)
+  {
+    info->pulse.pulseCount = 0;
+    return true;
+  }
+
+  // Pulses are disallowed when the window sequence is AAC_WINSEQ_8_SHORT
+  if (info->ics->windowSequence == AAC_WINSEQ_8_SHORT)
+    return false;  // Cannot combine pulses with short windows
+
+  unsigned int pulseCount = reader->readUInt(2) + 1;
+  info->pulse.pulseCount = pulseCount;
+
+  printf("pulseCount %d\n", pulseCount);
+  for (unsigned int p = 0; p < pulseCount; p++)
+  {
+    uint8_t offset = reader->readUInt(5);
+    uint8_t amplitude = reader->readUInt(4);
+    printf("pulse %d  offset %d  amplitude %d\n", p, offset, amplitude);
+    info->pulse.pulses[p].offset = offset;
+    info->pulse.pulses[p].amplitude = amplitude;
+  }
+
+  return true;
+}
+
+// tns_data()
+bool AacDecoder::decodeTnsInfo(AacBitReader *reader, AacDecodeInfo *info)
+{
+  bool hasTns = reader->readUInt(1);
+  if (!hasTns)
+    return true;
+
+  // § 14.2.1
+  unsigned int filterCountBits;
+  unsigned int lengthBits;
+  unsigned int orderBits;
+  unsigned int maxOrder;
+  if (info->ics->windowSequence == AAC_WINSEQ_8_SHORT)
+  {
+    filterCountBits = 1;
+    lengthBits = 4;
+    orderBits = 3;
+    maxOrder = AAC_MAX_TNS_ORDER_SHORT;
+  }
+  else
+  {
+    filterCountBits = 2;
+    lengthBits = 6;
+    orderBits = 5;
+    maxOrder = AAC_MAX_TNS_ORDER_LONG_LC;
+  }
+
+  for (unsigned int w = 0; w < info->section->windowCount; w++)
+  {
+    unsigned int filterCount = reader->readUInt(filterCountBits);
+    info->tns.filterCount[w] = filterCount;
+
+    if (filterCount> 0)
+      info->tns.coefficientBits[w] = reader->readUInt(1) + 3;
+
+    for (unsigned int f = 0; f < filterCount; f++)
+    {
+      unsigned int length = reader->readUInt(lengthBits);
+      unsigned int order = reader->readUInt(orderBits);
+
+      if (order > maxOrder)
+        return false;  // Order too high
+
+      info->tns.filters[w][f].length = length;
+      info->tns.filters[w][f].order  = order;
+      info->tns.filters[w][f].flags  = 0;
+
+      if (order)
+      {
+        if (reader->readUInt(1))
+          info->tns.filters[w][f].flags |= AAC_TNS_FILTER_FLAG_DOWNWARD;
+
+        if (reader->readUInt(1))
+          info->tns.filters[w][f].flags |= AAC_TNS_FILTER_FLAG_COMPRESS;
+
+        for (unsigned int o = 0; o < order; o++)
+        {
+          info->tns.filters[w][f].coefficients[o] = reader->readUInt(orderBits);
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
+// spectral_data()
+bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
+{
+  for (unsigned int g = 0; g < info->section->windowGroupCount; g++)
+  {
+    for (unsigned int s = 0; s < info->section->sectionCounts[g]; s++)
+    {
+      auto codebook = info->section->sfbCodebooks[g][info->section->sectionStarts[g][s]];
+
+      printf("group %d  section %d  codebook %d\n", g, s, codebook);
+    }
+  }
+
   abort();
 }
 
@@ -349,14 +538,22 @@ bool AacDecoder::decodeElementFIL(AacBitReader *reader)
 // Single channel element
 bool AacDecoder::decodeElementSCE(AacBitReader *reader)
 {
-  unsigned int identifier = reader->readUInt(4);
-  unsigned int globalGain = reader->readUInt(8);
+  AacIcsInfo ics;
+  AacSectionInfo section;
+  AacScalefactorInfo sf;
+
+  AacDecodeInfo info;
+  info.ics     = &ics;
+  info.section = &section;
+  info.sf      = &sf;
+
+  info.identifier = reader->readUInt(4);
+  info.globalGain = reader->readUInt(8);
 
   printf("-- SCE --\n");
-  printf("identifier       : %d\n", identifier);
-  printf("global gain      : %d\n", globalGain);
+  printf("identifier       : %d\n", info.identifier);
+  printf("global gain      : %d\n", info.globalGain);
 
-  AacIcsInfo ics;
   if (!decodeIcsInfo(reader, &ics))
     return false;
 
@@ -364,17 +561,27 @@ bool AacDecoder::decodeElementSCE(AacBitReader *reader)
   printf("window shape     : %d\n", ics.windowShape);
   printf("scalefactor bands: %d\n", ics.sfbCount);
 
-  AacSectionInfo sect;
-  if (!decodeSectionInfo(reader, &ics, &sect))
+  if (!decodeSectionInfo(reader, &ics, &section))
     return false;
 
-  printf("Window count     : %d\n", sect.windowCount);
+  printf("Window count     : %d\n", section.windowCount);
 
-  AacScalefactorInfo sf;
-  if (!decodeScalefactorInfo(reader, &sect, &sf))
+  if (!decodeScalefactorInfo(reader, &info))
     return false;
 
-  //return decodeIndividualChannelStream(reader, false);
+  if (!decodePulseInfo(reader, &info))
+    return false;
+
+  if (!decodeTnsInfo(reader, &info))
+    return false;
+
+  bool hasGainControl = reader->readUInt(1);
+  if (hasGainControl)
+    return false;  // Not allowed in LC profile
+
+  if (!decodeSpectralData(reader, &info))
+    return false;
+
   abort();
 }
 

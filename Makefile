@@ -1,5 +1,5 @@
 BINS=read
-OBJS=AacBitReader.o AacDecoder.o AacScalefactorDecoder.o \
+OBJS=AacBitReader.o AacDecoder.o AacScalefactorDecoder.o AacSpectrumDecoder.o \
 	AacAdtsFrameHeader.o AacAdtsFrameReader.o AacAdtsFrame.o
 CXXFLAGS=-std=c++14 -Wall -Wshadow -g `pkg-config --cflags sdl2`
 

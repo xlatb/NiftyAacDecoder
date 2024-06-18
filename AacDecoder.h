@@ -7,7 +7,7 @@ class AacBitReader;
 
 struct AacIcsInfo;
 struct AacSectionInfo;
-struct AacScalefactorInfo;
+struct AacDecodeInfo;
 
 class AacDecoder
 {
@@ -16,7 +16,10 @@ public:
 
   bool decodeIcsInfo(AacBitReader *reader, AacIcsInfo *info);
   bool decodeSectionInfo(AacBitReader *reader, const AacIcsInfo *info, AacSectionInfo *sect);
-  bool decodeScalefactorInfo(AacBitReader *reader, const AacSectionInfo *sect, AacScalefactorInfo *sf);
+  bool decodeScalefactorInfo(AacBitReader *reader, AacDecodeInfo *info);
+  bool decodePulseInfo(AacBitReader *reader, AacDecodeInfo *info);
+  bool decodeTnsInfo(AacBitReader *reader, AacDecodeInfo *info);
+  bool decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info);
 
   bool decodeBlock(AacBitReader *reader);
 
