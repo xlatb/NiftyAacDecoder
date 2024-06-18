@@ -1,97 +1,52 @@
-struct AacSpectrumHuffman
+#include <stdint.h>
+
+#include "AacSpectrumDecoder.h"
+
+// Huffman table with 2 values per entry
+struct AacSpectrumHuffman2
 {
   unsigned int count;  // Number of entries
   unsigned int maxBits;  // Bit length of longest codeword
-  struct { unsigned int len; unsigned int codeword; unsigned int index; } entries[];
+  struct { unsigned int len; unsigned int codeword; int8_t v1; int8_t v2; } entries[];
 };
 
-
-static const AacSpectrumHuffman codebook1 =
+// Huffman tbale with 4 values per entry
+struct AacSpectrumHuffman4
 {
-  .count = 81,
-  .maxBits = 11,
-  .entries =
-  {
-    { 1, 0x0     , 0x28},
-    { 5, 0x10    , 0x43},
-    { 5, 0x11    , 0xD },
-    { 5, 0x12    , 0x27},
-    { 5, 0x13    , 0x31},
-    { 5, 0x14    , 0x29},
-    { 5, 0x15    , 0x25},
-    { 5, 0x16    , 0x2B},
-    { 5, 0x17    , 0x1F},
-    { 7, 0x60    , 0x3A},
-    { 7, 0x61    , 0x16},
-    { 7, 0x62    , 0x26},
-    { 7, 0x63    , 0x2E},
-    { 7, 0x64    , 0x22},
-    { 7, 0x65    , 0x2A},
-    { 7, 0x66    , 0x4C},
-    { 7, 0x67    , 0x24},
-    { 7, 0x68    , 0x4 },
-    { 7, 0x69    , 0x1C},
-    { 7, 0x6A    , 0x40},
-    { 7, 0x6B    , 0x30},
-    { 7, 0x6C    , 0x10},
-    { 7, 0x6D    , 0x2C},
-    { 7, 0x6E    , 0x46},
-    { 7, 0x6F    , 0x20},
-    { 7, 0x70    , 0x34},
-    { 7, 0x71    , 0x32},
-    { 7, 0x72    , 0xA },
-    { 7, 0x73    , 0x44},
-    { 7, 0x74    , 0xC },
-    { 7, 0x75    , 0x42},
-    { 7, 0x76    , 0xE },
-    { 7, 0x77    , 0x1E},
-    { 9, 0x1E0   , 0x49},
-    { 9, 0x1E1   , 0x13},
-    { 9, 0x1E2   , 0x3D},
-    { 9, 0x1E3   , 0x33},
-    { 9, 0x1E4   , 0x2F},
-    { 9, 0x1E5   , 0x23},
-    { 9, 0x1E6   , 0x21},
-    { 9, 0x1E7   , 0x37},
-    { 9, 0x1E8   , 0x41},
-    { 9, 0x1E9   , 0x2D},
-    { 9, 0x1EA   , 0x19},
-    { 9, 0x1EB   , 0xF },
-    { 9, 0x1EC   , 0x7 },
-    { 9, 0x1ED   , 0x1D},
-    { 9, 0x1EE   , 0x3B},
-    { 9, 0x1EF   , 0x39},
-    { 9, 0x1F0   , 0x15},
-    { 9, 0x1F1   , 0x1 },
-    { 9, 0x1F2   , 0x1B},
-    { 9, 0x1F3   , 0x35},
-    { 9, 0x1F4   , 0x45},
-    { 9, 0x1F5   , 0x4D},
-    { 9, 0x1F6   , 0x17},
-    { 9, 0x1F7   , 0x4F},
-    {10, 0x3F0   , 0x5 },
-    {10, 0x3F1   , 0x9 },
-    {10, 0x3F2   , 0x4B},
-    {10, 0x3F3   , 0x3F},
-    {10, 0x3F4   , 0xB },
-    {10, 0x3F5   , 0x3 },
-    {10, 0x3F6   , 0x11},
-    {10, 0x3F7   , 0x47},
-    {11, 0x7F0   , 0x3C},
-    {11, 0x7F1   , 0x14},
-    {11, 0x7F2   , 0x18},
-    {11, 0x7F3   , 0x38},
-    {11, 0x7F4   , 0x50},
-    {11, 0x7F5   , 0x8 },
-    {11, 0x7F6   , 0x48},
-    {11, 0x7F7   , 0x6 },
-    {11, 0x7F8   , 0x0 },
-    {11, 0x7F9   , 0x4A},
-    {11, 0x7FA   , 0x3E},
-    {11, 0x7FB   , 0x1A},
-    {11, 0x7FC   , 0x12},
-    {11, 0x7FD   , 0x2 },
-    {11, 0x7FE   , 0x36},
-    {11, 0x7FF   , 0x4E},
-  }
+  unsigned int count;  // Number of entries
+  unsigned int maxBits;  // Bit length of longest codeword
+  struct { unsigned int len; unsigned int codeword; int8_t v1; int8_t v2; int8_t v3; int8_t v4; } entries[];
 };
+
+static const AacSpectrumHuffman4 codebook1 =
+#include "tables/huffman-table-spectrum-1.c"
+
+static const AacSpectrumHuffman4 codebook2 =
+#include "tables/huffman-table-spectrum-2.c"
+
+static const AacSpectrumHuffman4 codebook3 =
+#include "tables/huffman-table-spectrum-3.c"
+
+static const AacSpectrumHuffman4 codebook4 =
+#include "tables/huffman-table-spectrum-4.c"
+
+static const AacSpectrumHuffman2 codebook5 =
+#include "tables/huffman-table-spectrum-5.c"
+
+static const AacSpectrumHuffman2 codebook6 =
+#include "tables/huffman-table-spectrum-6.c"
+
+static const AacSpectrumHuffman2 codebook7 =
+#include "tables/huffman-table-spectrum-7.c"
+
+static const AacSpectrumHuffman2 codebook8 =
+#include "tables/huffman-table-spectrum-8.c"
+
+static const AacSpectrumHuffman2 codebook9 =
+#include "tables/huffman-table-spectrum-9.c"
+
+static const AacSpectrumHuffman2 codebook10 =
+#include "tables/huffman-table-spectrum-10.c"
+
+static const AacSpectrumHuffman2 codebook11 =
+#include "tables/huffman-table-spectrum-11.c"

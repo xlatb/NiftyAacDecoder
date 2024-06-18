@@ -355,7 +355,6 @@ bool AacDecoder::decodeScalefactorInfo(AacBitReader *reader, AacDecodeInfo *info
       if (!sfd.decode(&sfOffset))
         return false;  // Huffman decode failure
 
-      sfOffset += -60;  // TODO: Let's combine the -60 offset into the table data
       if ((sfOffset < 0) && (-sfOffset > sf))
         return false;  // Would underflow
       else if ((sfOffset > 0) && ((sfOffset + sf) > UINT8_MAX))
