@@ -3,6 +3,8 @@
 
 #include "AacBitReader.h"
 #include "AacScalefactorDecoder.h"
+#include "AacSpectrumDecoder.h"
+#include "AacConstants.h"
 
 #include "AacDecoder.h"
 
@@ -43,15 +45,6 @@ enum AacExtensionType
 
 enum
 {
-  AAC_HCB_ZERO       = 0,   // ZERO_HCB
-  AAC_HCB_FIRST_PAIR = 5,   // FIRST_PAIR_HCB
-  AAC_HCB_ESC        = 11,  // ESC_HCB
-  AAC_HCB_INTENSITY2 = 14,  // INTENSITY_HCB2
-  AAC_HCB_INTENSITY  = 15,  // INTENSITY_HCB
-};
-
-enum
-{
   AAC_TNS_FILTER_FLAG_DOWNWARD = 0x01,
   AAC_TNS_FILTER_FLAG_COMPRESS = 0x02,
 };
@@ -59,7 +52,7 @@ enum
 struct scalefactorBandInfo
 {
   unsigned int bandCount;
-  uint16_t     offsets[];
+  uint16_t     offsets[];  // Scalefactor window band (swb) offsets
 };
 
 // Table 45
@@ -182,12 +175,9 @@ struct AacSectionInfo
   unsigned int windowGroupCount;
   uint8_t      windowGroupLengths[AAC_MAX_WINDOW_GROUPS];
 
-  uint8_t      sfbCodebooks[AAC_MAX_WINDOW_GROUPS][AAC_MAX_SFB_COUNT];
+  uint8_t      sfbCodebooks[AAC_MAX_WINDOW_GROUPS][AAC_MAX_SFB_COUNT];  // For each group, for each scalefactor band, the codebook
 
-  // TODO: Substruct
-  uint8_t      sectionCounts[AAC_MAX_WINDOW_GROUPS];  // For each group, the number of subband "sections"
-  uint8_t      sectionStarts[AAC_MAX_WINDOW_GROUPS][AAC_MAX_SFB_COUNT];  // For each group, for each section, the starting scalefilter band index
-  uint8_t      sectionLengths[AAC_MAX_WINDOW_GROUPS][AAC_MAX_SFB_COUNT];  // For each group, for each section, the number of scalefilter bands
+  struct { uint8_t count; struct { uint8_t start; uint8_t length; } sections[AAC_MAX_SFB_COUNT]; } windowGroupSections[AAC_MAX_WINDOW_GROUPS];  // For each group, the sections
 };
 
 struct AacScalefactorInfo
@@ -314,14 +304,13 @@ bool AacDecoder::decodeSectionInfo(AacBitReader *reader, const AacIcsInfo *ics, 
         sect->sfbCodebooks[g][sfb] = codebook;
 
       // Remember the extent of this section
-      sect->sectionStarts[g][s] = static_cast<uint8_t>(k);
-      sect->sectionLengths[g][s] = static_cast<uint8_t>(len);
+      sect->windowGroupSections[g].sections[s] = {.start = static_cast<uint8_t>(k), .length = static_cast<uint8_t>(len)};
 
       k += len;
       s++;
     }
 
-    sect->sectionCounts[g] = s;
+    sect->windowGroupSections[g].count = s;
   }
 
   return true;
@@ -468,13 +457,38 @@ bool AacDecoder::decodeTnsInfo(AacBitReader *reader, AacDecodeInfo *info)
 // spectral_data()
 bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
 {
+  auto sd = AacSpectrumDecoder(reader);
+
   for (unsigned int g = 0; g < info->section->windowGroupCount; g++)
   {
-    for (unsigned int s = 0; s < info->section->sectionCounts[g]; s++)
+    for (unsigned int s = 0; s < info->section->windowGroupSections[g].count; s++)
     {
-      auto codebook = info->section->sfbCodebooks[g][info->section->sectionStarts[g][s]];
+      auto codebook = info->section->sfbCodebooks[g][info->section->windowGroupSections[g].sections[s].start];
+      if ((codebook == AAC_HCB_ZERO) || (codebook > AAC_HCB_ESC)) continue;
+
+      unsigned int sectionStart = info->section->windowGroupSections[g].sections[s].start;
+      unsigned int sectionEnd   = sectionStart + info->section->windowGroupSections[g].sections[s].length;
 
       printf("group %d  section %d  codebook %d\n", g, s, codebook);
+
+      // TODO: We need to find the sampling_frequency_index
+      // TODO: We need to look up the sect_sfb_offset[g][s]
+
+      int w, x, y, z;
+      if (codebook < AAC_HCB_FIRST_PAIR)
+      {
+        // 4-tuple decode
+        for (unsigned int k = sectionStart; k < sectionEnd; k += 4)
+        {
+        }
+      }
+      else
+      {
+        // 2-tuple decode
+        for (unsigned int k = sectionStart; k < sectionEnd; k += 2)
+        {
+        }
+      }
     }
   }
 

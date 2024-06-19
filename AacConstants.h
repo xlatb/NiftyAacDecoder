@@ -1,0 +1,13 @@
+#ifndef AAC_CONSTANTS_H
+#define AAC_CONSTANTS_H
+
+enum
+{
+  AAC_HCB_ZERO       = 0,   // ZERO_HCB
+  AAC_HCB_FIRST_PAIR = 5,   // FIRST_PAIR_HCB
+  AAC_HCB_ESC        = 11,  // ESC_HCB
+  AAC_HCB_INTENSITY2 = 14,  // INTENSITY_HCB2
+  AAC_HCB_INTENSITY  = 15,  // INTENSITY_HCB
+};
+
+#endif

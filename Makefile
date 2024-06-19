@@ -5,7 +5,7 @@ OBJS=AacBitReader.o AacDecoder.o AacScalefactorDecoder.o AacSpectrumDecoder.o \
 
 BINOBJS=read.o
 
-CXXFLAGS=-std=c++14 -Wall -Wshadow -g `pkg-config --cflags sdl2`
+CXXFLAGS=-std=c++17 -Wall -Wshadow -g `pkg-config --cflags sdl2`
 
 HUFFTABLES=tables/huffman-table-scalefactor.c \
 	tables/huffman-table-spectrum-1.c \
