@@ -1,40 +1,11 @@
 #include <assert.h>
 #include <stdio.h>
 
+#include "AacConstants.h"
 #include "AacAdtsFrameHeader.h"
 
 const char *versionNames[] = {"MPEG-4", "MPEG-2"};
 const char *profileNames[] = {"Main", "LC", "SSR", "?"};
-
-// Table 35
-static const unsigned int sampleRateMap[] =
-{
-  96000,  // 0
-  88200,
-  64000,
-  48000,
-
-  44100,  // 4
-  32000,
-  24000,
-  22050,
-
-  16000,  // 8
-  12000,
-  11025,
-  8000,
-
-  0,      // 12
-  0,
-  0,
-  0,
-};
-
-//struct AacChannelConfiguration
-//{
-//  unsigned int numFullChannels;
-//  unsigned int numSubwooferChannels;
-//};
 
 // Channel configuration (Table 42)
 static const AacChannelConfiguration channelConfigurations[] =
@@ -70,7 +41,7 @@ bool AacAdtsFrameHeader::isFrameHeader(const uint8_t *bytes)
 
 unsigned int AacAdtsFrameHeader::getSampleRate(void) const
 {
-  return sampleRateMap[getSampleRateIndex()];
+  return AacConstants::getSampleRateByIndex(static_cast<AacSampleRateIndex>(getSampleRateIndex()));
 }
 
 const AacChannelConfiguration *AacAdtsFrameHeader::getChannelConfiguration(void) const
