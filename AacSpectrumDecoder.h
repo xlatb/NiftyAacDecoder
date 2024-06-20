@@ -10,8 +10,8 @@ class AacSpectrumDecoder
 public:
   AacSpectrumDecoder(AacBitReader *reader) : m_reader(reader) {};
 
-  bool decode2(unsigned int tableNum, int *y, int *z);
-  bool decode4(unsigned int tableNum, int *w, int *x, int *y, int *z);
+  bool decode2(unsigned int tableNum, int out[2]);
+  bool decode4(unsigned int tableNum, int out[4]);
 
   unsigned int decodeEscape(void);
 };

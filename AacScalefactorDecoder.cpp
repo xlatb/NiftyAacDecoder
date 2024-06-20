@@ -22,7 +22,7 @@ bool AacScalefactorDecoder::decode(int *scalefactorIndex)
 
   while (true)
   {
-    printf("AacScalefactorDecoder::decode(): i %d  len %d  codeword 0x%X  index %d\n", i, len, codeword, huffmanTable.entries[i].index);
+    //printf("AacScalefactorDecoder::decode(): i %d  len %d  codeword 0x%X  index %d\n", i, len, codeword, huffmanTable.entries[i].index);
     // If we've hit an entry with more bits than we have, read more bits
     if (len < huffmanTable.entries[i].len)
     {

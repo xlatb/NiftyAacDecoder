@@ -41,6 +41,26 @@ unsigned int AacBitReader::readUInt(unsigned int bitCount)
   return v;
 }
 
+void AacBitReader::skipBits(unsigned int count)
+{
+  // Skip forward by bytes
+  unsigned int byteCount = count >> 3;
+  m_position += byteCount;
+
+  // Skip forward by bits
+  m_bit = m_bit + (count & 0x07);
+  if (m_bit >= 8)
+  {
+    m_bit = m_bit % 8;
+    m_position++;
+  }
+
+  if (m_position > m_size)
+    m_position = m_size;
+
+  return;
+}
+
 void AacBitReader::dumpPosition(void)
 {
   printf("AacBitReader position %zu (0x%zX) bit %d\n", m_position, m_position, m_bit);

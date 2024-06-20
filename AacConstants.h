@@ -30,8 +30,8 @@ enum AacSampleRateIndex : unsigned int
 
 struct AacScalefactorBandOffsets
 {
-  unsigned int bandCount;
-  uint16_t     offsets[];  // Scalefactor window band (swb) offsets
+  unsigned int swbCount;   // Number of scalefactor window bands (swb)
+  uint16_t     offsets[];  // The swb offsets
 };
 
 struct AacScalefactorBandInfo

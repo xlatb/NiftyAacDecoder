@@ -208,7 +208,7 @@ bool AacDecoder::decodeSectionInfo(AacBitReader *reader, const AacIcsInfo *ics, 
         return false;  // We've overflowed the scalefactor bands
 
       len += l;
-      printf("Section %d  codebook 0x%X  start %d  length %d\n", s, codebook, k, len);
+      printf("group %d  section %d  codebook 0x%X  start %d  length %d\n", g, s, codebook, k, len);
 
       // Copy the codebook to each band as determined by the length
       for (unsigned int sfb = k; sfb < k + len; sfb++)
@@ -370,53 +370,97 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
 {
   auto sd = AacSpectrumDecoder(reader);
 
-  for (unsigned int g = 0; g < info->section->windowGroupCount; g++)
+  int16_t x_quant[1024] = {};
+
+  printf("decodeSpectralData():  window %s  sfbCount %d\n", (info->ics->windowSequence == AAC_WINSEQ_8_SHORT) ? "8_SHORT" : "LONG", info->ics->sfbCount);
+
+  for (unsigned int g = 0; g < info->section->windowGroupCount; g++)  // Groups
   {
-    for (unsigned int s = 0; s < info->section->windowGroupSections[g].count; s++)
+    printf("- group %d has %d sections\n", g, info->section->windowGroupSections[g].count);
+    for (unsigned int s = 0; s < info->section->windowGroupSections[g].count; s++)  // Sections
     {
       auto codebook = info->section->sfbCodebooks[g][info->section->windowGroupSections[g].sections[s].start];
-      if ((codebook == AAC_HCB_ZERO) || (codebook > AAC_HCB_ESC)) continue;
+      if ((codebook == AAC_HCB_ZERO) || (codebook > AAC_HCB_ESC))
+      {
+        printf("  group %d  section %d  codebook %2d -- Skipping due to codebook\n", g, s, codebook);
+        continue;
+      }
 
-      unsigned int sectionStart = info->section->windowGroupSections[g].sections[s].start;
-      unsigned int sectionEnd   = sectionStart + info->section->windowGroupSections[g].sections[s].length;
+      unsigned int sectionSfbStart = info->section->windowGroupSections[g].sections[s].start;
+      unsigned int sectionSfbEnd   = sectionSfbStart + info->section->windowGroupSections[g].sections[s].length;
+      assert(sectionSfbEnd <= info->ics->sfbCount);
 
-      printf("group %d  section %d  codebook %d\n", g, s, codebook);
+      unsigned int sectionSampleStart;
+      unsigned int sectionSampleEnd;
+      if (info->ics->windowSequence != AAC_WINSEQ_8_SHORT)
+      {
+        // One long window
+        assert(sectionSfbStart < m_scalefactorBandInfo->longWindow->swbCount);
+        assert(sectionSfbEnd   < m_scalefactorBandInfo->longWindow->swbCount);
+        sectionSampleStart = m_scalefactorBandInfo->longWindow->offsets[sectionSfbStart];
+        sectionSampleEnd   = m_scalefactorBandInfo->longWindow->offsets[sectionSfbEnd];
+      }
+      else
+      {
+        // Eight short windows
+        assert(sectionSfbStart < m_scalefactorBandInfo->shortWindow->swbCount);
+        assert(sectionSfbEnd   < m_scalefactorBandInfo->shortWindow->swbCount);
+        // TODO: We need to look up the sect_sfb_offset[g][s]
+        abort();  // TODO
+      }
 
-      // TODO: We need to look up the ScalefactorBandInfo for both short and
-      //  long windows for the current frequency and store them somewhere.
-      // TODO: We need to find the sampling_frequency_index
-      // TODO: We need to look up the sect_sfb_offset[g][s]
+      printf("  group %d  section %d  codebook %2d  sectionSfbStart %2u  sectionSfbEnd %2u  sectionSampleStart %4u  sectionSampleEnd %4u\n", g, s, codebook, sectionSfbStart, sectionSfbEnd, sectionSampleStart, sectionSampleEnd);
+
 
       int w, x, y, z;
       if (codebook < AAC_HCB_FIRST_PAIR)
       {
         // 4-tuple decode
-        for (unsigned int k = sectionStart; k < sectionEnd; k += 4)
+        for (unsigned int k = sectionSampleStart; k < sectionSampleEnd; k += 4)
         {
+          // TODO: If decode4() took an int16_t, we could point it directly at x_quant[] and get rid of v[]?
+          int v[4];
+          sd.decode4(codebook, v);
+          printf("    sample %d: w %d  x %d  y %d  z %d\n", k, v[0], v[1], v[2], v[3]);
+          x_quant[k + 0] = v[0];
+          x_quant[k + 1] = v[1];
+          x_quant[k + 2] = v[2];
+          x_quant[k + 3] = v[3];
         }
       }
       else
       {
         // 2-tuple decode
-        for (unsigned int k = sectionStart; k < sectionEnd; k += 2)
+        for (unsigned int k = sectionSampleStart; k < sectionSampleEnd; k += 2)
         {
+          // TODO: If decode2() took an int16_t, we could point it directly at x_quant[] and get rid of v[]?
+          int v[2];
+          sd.decode2(codebook, v);
+          printf("    sample %d: y %d z %d\n", k, v[0], v[1]);
+          x_quant[k + 0] = v[0];
+          x_quant[k + 1] = v[1];
         }
       }
     }
   }
 
-  abort();
+  return true;
 }
 
 bool AacDecoder::decodeBlock(AacBitReader *reader)
 {
-  while (!reader->isComplete())
+  bool done = false;
+
+  while (!done && !reader->isComplete())
   {
     unsigned int id = reader->readUInt(3);
     printf("Element ID: 0x%X\n", id);
 
     switch (id)
     {
+    case AAC_ID_END:
+      done = true;
+      break;
     case AAC_ID_FIL:
       if (!decodeElementFIL(reader))
         return false;
@@ -435,6 +479,8 @@ bool AacDecoder::decodeBlock(AacBitReader *reader)
     }
   }
 
+  reader->alignToBit(0);
+
   return true;
 }
 
@@ -450,13 +496,7 @@ bool AacDecoder::decodeElementFIL(AacBitReader *reader)
   }
 
   printf("FIL count %d\n", count);
-  while (count)
-  {
-    //unsigned int extensionType = reader->readUInt(4);
-    //printf("  extension type 0x%X\n", extensionType);
-    reader->readUInt(8);
-    count--;
-  }
+  reader->skipBytes(count);
 
   return true;
 }
@@ -508,7 +548,9 @@ bool AacDecoder::decodeElementSCE(AacBitReader *reader)
   if (!decodeSpectralData(reader, &info))
     return false;
 
-  abort();
+  // TODO: Decode audio
+
+  return true;
 }
 
 // Channel pair element

@@ -17,7 +17,7 @@ struct AacSpectrumHuffman2
 {
   unsigned int count;  // Number of entries
   unsigned int maxBits;  // Bit length of longest codeword
-  struct { unsigned int len; unsigned int codeword; int8_t v1; int8_t v2; } entries[];
+  struct { unsigned int len; unsigned int codeword; int8_t v0; int8_t v1; } entries[];
 };
 
 // Huffman tbale with 4 values per entry
@@ -25,7 +25,7 @@ struct AacSpectrumHuffman4
 {
   unsigned int count;  // Number of entries
   unsigned int maxBits;  // Bit length of longest codeword
-  struct { unsigned int len; unsigned int codeword; int8_t v1; int8_t v2; int8_t v3; int8_t v4; } entries[];
+  struct { unsigned int len; unsigned int codeword; int8_t v0; int8_t v1; int8_t v2; int8_t v3; } entries[];
 };
 
 static const AacSpectrumHuffman4 codebook1 =
@@ -87,7 +87,7 @@ static const struct
 
 constexpr unsigned int codebookCount = std::size(codebooks);
 
-bool AacSpectrumDecoder::decode2(unsigned int tableNum, int *y, int *z)
+bool AacSpectrumDecoder::decode2(unsigned int tableNum, int out[2])
 {
   assert(tableNum < codebookCount);
   assert(codebooks[tableNum].dimension == 2);
@@ -100,7 +100,7 @@ bool AacSpectrumDecoder::decode2(unsigned int tableNum, int *y, int *z)
 
   while (true)
   {
-    printf("AacSpectrumDecoder::decode2(): i %d  len %d  codeword 0x%X  v1 %d  v2 %d\n", i, len, codeword, huffmanTable->entries[i].v1, huffmanTable->entries[i].v2);
+    printf("AacSpectrumDecoder::decode2(): i %d  len %d  codeword 0x%X  v1 %d  v2 %d\n", i, len, codeword, huffmanTable->entries[i].v0, huffmanTable->entries[i].v1);
     // If we've hit an entry with more bits than we have, read more bits
     if (len < huffmanTable->entries[i].len)
     {
@@ -115,35 +115,35 @@ bool AacSpectrumDecoder::decode2(unsigned int tableNum, int *y, int *z)
     {
       if (huffmanTable->entries[i].codeword == codeword)
       {
+        int8_t v0 = huffmanTable->entries[i].v0;
         int8_t v1 = huffmanTable->entries[i].v1;
-        int8_t v2 = huffmanTable->entries[i].v2;
 
         // Read sign bits if needed, but don't act on them yet
+        bool sign0 = false;
         bool sign1 = false;
-        bool sign2 = false;
         if (!codebooks[tableNum].isSigned)
         {
           // Read extra sign bits for non-zero coefficients
+          if (v0 != 0) sign0 = m_reader->readUInt(1);
           if (v1 != 0) sign1 = m_reader->readUInt(1);
-          if (v2 != 0) sign2 = m_reader->readUInt(1);
         }
 
         // Read escapes if needed
         if (tableNum == AAC_HCB_ESC)
         {
+          if (v0 == AAC_SPECTRUM_ESC_VALUE) v0 = decodeEscape();
           if (v1 == AAC_SPECTRUM_ESC_VALUE) v1 = decodeEscape();
-          if (v2 == AAC_SPECTRUM_ESC_VALUE) v2 = decodeEscape();
         }
 
         // Apply sign bits
         if (!codebooks[tableNum].isSigned)
         {
+          if (sign0) v0 = -v0;
           if (sign1) v1 = -v1;
-          if (sign2) v2 = -v2;
         }
 
-        *y = v1;
-        *z = v2;
+        out[0] = v0;
+        out[1] = v1;
         return true;
       }
 
@@ -157,10 +157,10 @@ bool AacSpectrumDecoder::decode2(unsigned int tableNum, int *y, int *z)
   abort();
 }
 
-bool AacSpectrumDecoder::decode4(unsigned int tableNum, int *w, int *x, int *y, int *z)
+bool AacSpectrumDecoder::decode4(unsigned int tableNum, int out[4])
 {
   assert(tableNum < codebookCount);
-  assert(codebooks[tableNum].dimension == 2);
+  assert(codebooks[tableNum].dimension == 4);
 
   const AacSpectrumHuffman4 *huffmanTable = reinterpret_cast<const AacSpectrumHuffman4 *>(codebooks[tableNum].codebook);
 
@@ -170,7 +170,7 @@ bool AacSpectrumDecoder::decode4(unsigned int tableNum, int *w, int *x, int *y, 
 
   while (true)
   {
-    printf("AacSpectrumDecoder::decode4(): i %d  len %d  codeword 0x%X  v1 %d  v2 %d  v3 %d  v4 %d\n", i, len, codeword, huffmanTable->entries[i].v1, huffmanTable->entries[i].v2, huffmanTable->entries[i].v3, huffmanTable->entries[i].v4);
+    printf("AacSpectrumDecoder::decode4(): i %d  len %d  codeword 0x%X  v1 %d  v2 %d  v3 %d  v4 %d\n", i, len, codeword, huffmanTable->entries[i].v0, huffmanTable->entries[i].v1, huffmanTable->entries[i].v2, huffmanTable->entries[i].v3);
     // If we've hit an entry with more bits than we have, read more bits
     if (len < huffmanTable->entries[i].len)
     {
@@ -185,24 +185,24 @@ bool AacSpectrumDecoder::decode4(unsigned int tableNum, int *w, int *x, int *y, 
     {
       if (huffmanTable->entries[i].codeword == codeword)
       {
+        int8_t v0 = huffmanTable->entries[i].v0;
         int8_t v1 = huffmanTable->entries[i].v1;
         int8_t v2 = huffmanTable->entries[i].v2;
         int8_t v3 = huffmanTable->entries[i].v3;
-        int8_t v4 = huffmanTable->entries[i].v4;
 
         if (!codebooks[tableNum].isSigned)
         {
           // Read extra sign bits for non-zero coefficients
+          if ((v0 != 0) && m_reader->readUInt(1)) v0 = -v0;
           if ((v1 != 0) && m_reader->readUInt(1)) v1 = -v1;
           if ((v2 != 0) && m_reader->readUInt(1)) v2 = -v2;
           if ((v3 != 0) && m_reader->readUInt(1)) v3 = -v3;
-          if ((v4 != 0) && m_reader->readUInt(1)) v4 = -v4;
         }
 
-        *w = v1;
-        *x = v2;
-        *y = v3;
-        *z = v4;
+        out[0] = v0;
+        out[1] = v1;
+        out[2] = v2;
+        out[3] = v3;
         return true;
       }
 
