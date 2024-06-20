@@ -1,3 +1,5 @@
+#include <stdint.h>
+
 #ifndef AAC_CONSTANTS_H
 #define AAC_CONSTANTS_H
 
@@ -26,10 +28,24 @@ enum AacSampleRateIndex : unsigned int
   AAC_SAMPLE_RATE_8000  = 11,
 };
 
+struct AacScalefactorBandOffsets
+{
+  unsigned int bandCount;
+  uint16_t     offsets[];  // Scalefactor window band (swb) offsets
+};
+
+struct AacScalefactorBandInfo
+{
+  const AacScalefactorBandOffsets *shortWindow;
+  const AacScalefactorBandOffsets *longWindow;
+};
+
 namespace AacConstants
 {
   extern unsigned int       getSampleRateByIndex(AacSampleRateIndex index);
   extern AacSampleRateIndex getIndexBySampleRate(unsigned int sampleRate);
+
+  extern const AacScalefactorBandInfo *getScalefactorBandInfo(AacSampleRateIndex index);
 };
 
 #endif

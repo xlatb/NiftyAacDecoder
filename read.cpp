@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
   header.dump();
 
   // Create decoder
-  auto decoder = AacDecoder();
+  auto decoder = AacDecoder(header.getSampleRate());
 
   while (!reader.isComplete())
   {
@@ -79,6 +79,12 @@ int main(int argc, char *argv[])
     }
 
     frame.getHeader()->dump();
+
+    if (decoder.getSampleRate() != frame.getHeader()->getSampleRate())
+    {
+      fprintf(stderr, "Detected sample rate change (%u -> %u)! Reinitializing decoder.\n", decoder.getSampleRate(), frame.getHeader()->getSampleRate());
+      decoder = AacDecoder(frame.getHeader()->getSampleRate());
+    }
 
     if (!decoder.decodeBlock(frame.getReader()))
     {

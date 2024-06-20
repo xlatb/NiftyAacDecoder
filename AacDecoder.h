@@ -1,5 +1,7 @@
 #include <stdint.h>
 
+#include "AacConstants.h"
+
 #ifndef AAC_DECODER_H
 #define AAC_DECODER_H
 
@@ -11,8 +13,13 @@ struct AacDecodeInfo;
 
 class AacDecoder
 {
+  unsigned int       m_sampleRate;
+  AacSampleRateIndex m_sampleRateIndex;
+
+  const AacScalefactorBandInfo *m_scalefactorBandInfo;
+
 public:
-  AacDecoder(void) {};
+  AacDecoder(unsigned int sampleRate);
 
   bool decodeIcsInfo(AacBitReader *reader, AacIcsInfo *info);
   bool decodeSectionInfo(AacBitReader *reader, const AacIcsInfo *info, AacSectionInfo *sect);
@@ -26,6 +33,8 @@ public:
   bool decodeElementFIL(AacBitReader *reader);
   bool decodeElementSCE(AacBitReader *reader);
   bool decodeElementCPE(AacBitReader *reader);
+
+  unsigned int getSampleRate(void) { return m_sampleRate; };
 };
 
 #endif
