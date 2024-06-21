@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
+#include <math.h>
 
 #include "AacBitReader.h"
 #include "AacScalefactorDecoder.h"
@@ -379,6 +380,8 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
     printf("- group %d has %d sections\n", g, info->section->windowGroupSections[g].count);
     for (unsigned int s = 0; s < info->section->windowGroupSections[g].count; s++)  // Sections
     {
+      // Sections are ranges of one or more scalefactor bands that use the same codebook
+
       auto codebook = info->section->sfbCodebooks[g][info->section->windowGroupSections[g].sections[s].start];
       if ((codebook == AAC_HCB_ZERO) || (codebook > AAC_HCB_ESC))
       {
@@ -412,7 +415,6 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
       printf("  group %d  section %d  codebook %2d  sectionSfbStart %2u  sectionSfbEnd %2u  sectionSampleStart %4u  sectionSampleEnd %4u\n", g, s, codebook, sectionSfbStart, sectionSfbEnd, sectionSampleStart, sectionSampleEnd);
 
 
-      int w, x, y, z;
       if (codebook < AAC_HCB_FIRST_PAIR)
       {
         // 4-tuple decode
@@ -439,6 +441,52 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
           printf("    sample %d: y %d z %d\n", k, v[0], v[1]);
           x_quant[k + 0] = v[0];
           x_quant[k + 1] = v[1];
+        }
+      }
+    }
+  }
+
+  // Dequantize (§ 10.3)
+  double x_invquant[1024];  // TODO: A constant
+  for (unsigned int i = 0; i < 1024; i++)
+  {
+    // NOTE: The official formula goes to some lengths to preserve the sign:
+    //  x_invquant = sign(x_quant) * (abs(x_quant) ** (4/3))
+    // I suspect this is overkill and negative inputs will always come out
+    //  with a negative result?
+    // TODO: Calculate 4/3 outside the loop.
+    x_invquant[i] = pow(x_quant[i], 4.0/3.0);
+  }
+
+  // Rescale (§ 11.3.3)
+  double x_rescal[1024];
+  for (unsigned int g = 0; g < info->section->windowGroupCount; g++)  // Groups
+  {
+    for (unsigned int sfb = 0; sfb < info->ics->sfbCount; sfb++)
+    {
+      unsigned int swbStart, swbWidth;
+      if (info->ics->windowSequence != AAC_WINSEQ_8_SHORT)
+      {
+        // Long window
+        swbStart = m_scalefactorBandInfo->longWindow->offsets[sfb];
+        swbWidth = m_scalefactorBandInfo->longWindow->offsets[sfb + 1] - swbStart;
+      }
+      else
+      {
+        // Short window
+        // TODO: Need to adjust start by group number on short windows?
+        swbStart = m_scalefactorBandInfo->shortWindow->offsets[sfb];
+        swbWidth = m_scalefactorBandInfo->shortWindow->offsets[sfb + 1] - swbStart;
+      }
+
+      for (unsigned int w = 0; w < info->section->windowGroupLengths[g]; w++)
+      {
+        double gain = pow(2, 0.25 * (info->sf->scalefactors[g][sfb] - 100));
+
+        for (unsigned int k = 0; k < swbWidth; k++)
+        {
+          x_rescal[swbStart + k] = x_invquant[swbStart + k] * gain;
+          printf("x_rescal[%d] = %f  group %d  sfb %d  gain %f\n", swbStart + k, x_rescal[swbStart + k], g, sfb, gain);
         }
       }
     }

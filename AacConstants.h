@@ -28,10 +28,14 @@ enum AacSampleRateIndex : unsigned int
   AAC_SAMPLE_RATE_8000  = 11,
 };
 
+// NOTE: We add one extra element to the end of offsets[] with the total
+//  transform length (1024 for long windows and 128 for short windows).
+//  This allows us to easily find the width of any swb by subtracting
+//  the current offset from the following offset.
 struct AacScalefactorBandOffsets
 {
-  unsigned int swbCount;   // Number of scalefactor window bands (swb)
-  uint16_t     offsets[];  // The swb offsets
+  unsigned int swbCount;     // Number of scalefactor window bands (swb)
+  uint16_t     offsets[];    // The swb offsets (TODO: Rename to swbOffsets?)
 };
 
 struct AacScalefactorBandInfo
