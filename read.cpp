@@ -89,7 +89,7 @@ int main(int argc, char *argv[])
     if (!decoder.decodeBlock(frame.getReader()))
     {
       fprintf(stderr, "Failed to decode block\n");
-      exit(1);
+//      exit(1);
     }
 
     size_t frameSize = frame.getSize();

@@ -18,6 +18,10 @@ class AacDecoder
 
   const AacScalefactorBandInfo *m_scalefactorBandInfo;
 
+  unsigned int m_blockCount;
+
+  AacWindowShape m_previousWindowShape;
+
 public:
   AacDecoder(unsigned int sampleRate);
 

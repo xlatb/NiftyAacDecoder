@@ -100,7 +100,7 @@ bool AacSpectrumDecoder::decode2(unsigned int tableNum, int out[2])
 
   while (true)
   {
-    printf("AacSpectrumDecoder::decode2(): i %d  len %d  codeword 0x%X  v1 %d  v2 %d\n", i, len, codeword, huffmanTable->entries[i].v0, huffmanTable->entries[i].v1);
+    //printf("AacSpectrumDecoder::decode2(): i %d  len %d  codeword 0x%X  v1 %d  v2 %d\n", i, len, codeword, huffmanTable->entries[i].v0, huffmanTable->entries[i].v1);
     // If we've hit an entry with more bits than we have, read more bits
     if (len < huffmanTable->entries[i].len)
     {
@@ -170,7 +170,7 @@ bool AacSpectrumDecoder::decode4(unsigned int tableNum, int out[4])
 
   while (true)
   {
-    printf("AacSpectrumDecoder::decode4(): i %d  len %d  codeword 0x%X  v1 %d  v2 %d  v3 %d  v4 %d\n", i, len, codeword, huffmanTable->entries[i].v0, huffmanTable->entries[i].v1, huffmanTable->entries[i].v2, huffmanTable->entries[i].v3);
+    //printf("AacSpectrumDecoder::decode4(): i %d  len %d  codeword 0x%X  v1 %d  v2 %d  v3 %d  v4 %d\n", i, len, codeword, huffmanTable->entries[i].v0, huffmanTable->entries[i].v1, huffmanTable->entries[i].v2, huffmanTable->entries[i].v3);
     // If we've hit an entry with more bits than we have, read more bits
     if (len < huffmanTable->entries[i].len)
     {

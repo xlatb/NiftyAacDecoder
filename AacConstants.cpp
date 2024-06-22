@@ -156,9 +156,24 @@ namespace AacConstants
     {92017, UINT_MAX, AAC_SAMPLE_RATE_96000},  // 0
   };
 
+  // Table 44
+  static const char *windowSequenceNames[] =
+  {
+    "AAC_WINSEQ_LONG",        // 0x0
+    "AAC_WINSEQ_LONG_START",  // 0x1
+    "AAC_WINSEQ_8_SHORT",     // 0x2
+    "AAC_WINSEQ_LONG_STOP",   // 0x3
+  };
+
+  static const char *windowShapeNames[] =
+  {
+    "AAC_WINSHAPE_SIN",  // 0x0
+    "AAC_WINSHAPE_KBD",  // 0x1
+  };
+
   unsigned int getSampleRateByIndex(AacSampleRateIndex index)
   {
-    if (index > std::size(sampleRateMap))
+    if (index >= std::size(sampleRateMap))
       return 0;  // Out of range
 
     return sampleRateMap[index];
@@ -191,12 +206,28 @@ namespace AacConstants
     abort();  // Not reached
   }
 
-  extern const AacScalefactorBandInfo *getScalefactorBandInfo(AacSampleRateIndex index)
+  const AacScalefactorBandInfo *getScalefactorBandInfo(AacSampleRateIndex index)
   {
-    if (index > std::size(sampleRateMap))
+    if (index >= std::size(sampleRateMap))
       return NULL;  // Out of range
 
     return &scalefactorBandMap[index];
+  }
+
+  const char *getWindowSequenceName(AacWindowSequence sequence)
+  {
+    if (sequence >= std::size(windowSequenceNames))
+      return NULL;  // Out of range
+
+    return windowSequenceNames[sequence];
+  }
+
+  const char *getWindowShapeName(AacWindowShape shape)
+  {
+    if (shape >= std::size(windowShapeNames))
+      return NULL;  // Out of range
+
+    return windowShapeNames[shape];
   }
 
 };

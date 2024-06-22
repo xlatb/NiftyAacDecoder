@@ -3,15 +3,6 @@
 #ifndef AAC_CONSTANTS_H
 #define AAC_CONSTANTS_H
 
-enum
-{
-  AAC_HCB_ZERO       = 0,   // ZERO_HCB
-  AAC_HCB_FIRST_PAIR = 5,   // FIRST_PAIR_HCB
-  AAC_HCB_ESC        = 11,  // ESC_HCB
-  AAC_HCB_INTENSITY2 = 14,  // INTENSITY_HCB2
-  AAC_HCB_INTENSITY  = 15,  // INTENSITY_HCB
-};
-
 enum AacSampleRateIndex : unsigned int
 {
   AAC_SAMPLE_RATE_96000 = 0,
@@ -26,6 +17,31 @@ enum AacSampleRateIndex : unsigned int
   AAC_SAMPLE_RATE_12000 = 9,
   AAC_SAMPLE_RATE_11025 = 10,
   AAC_SAMPLE_RATE_8000  = 11,
+};
+
+// Special Huffman codebook indices
+enum
+{
+  AAC_HCB_ZERO       = 0,   // ZERO_HCB
+  AAC_HCB_FIRST_PAIR = 5,   // FIRST_PAIR_HCB
+  AAC_HCB_ESC        = 11,  // ESC_HCB
+  AAC_HCB_INTENSITY2 = 14,  // INTENSITY_HCB2
+  AAC_HCB_INTENSITY  = 15,  // INTENSITY_HCB
+};
+
+// Table 44
+enum AacWindowSequence
+{
+  AAC_WINSEQ_LONG       = 0x0,
+  AAC_WINSEQ_LONG_START = 0x1,
+  AAC_WINSEQ_8_SHORT    = 0x2,
+  AAC_WINSEQ_LONG_STOP  = 0x3,
+};
+
+enum AacWindowShape
+{
+  AAC_WINSHAPE_SIN = 0x0,
+  AAC_WINSHAPE_KBD = 0x1,  // Kaiser-Bessel derived
 };
 
 // NOTE: We add one extra element to the end of offsets[] with the total
@@ -50,6 +66,10 @@ namespace AacConstants
   extern AacSampleRateIndex getIndexBySampleRate(unsigned int sampleRate);
 
   extern const AacScalefactorBandInfo *getScalefactorBandInfo(AacSampleRateIndex index);
+
+  extern const char *getWindowSequenceName(AacWindowSequence sequence);
+
+  extern const char *getWindowShapeName(AacWindowShape shape);
 };
 
 #endif

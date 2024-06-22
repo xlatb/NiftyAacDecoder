@@ -1,3 +1,11 @@
+// TODO: Delete
+       #include <sys/types.h>
+       #include <sys/stat.h>
+       #include <fcntl.h>
+       #include <unistd.h>
+
+
+
 #include <assert.h>
 #include <stdio.h>
 #include <math.h>
@@ -48,21 +56,6 @@ enum
 {
   AAC_TNS_FILTER_FLAG_DOWNWARD = 0x01,
   AAC_TNS_FILTER_FLAG_COMPRESS = 0x02,
-};
-
-// Table 44
-enum AacWindowSequence
-{
-  AAC_WINSEQ_LONG       = 0x0,
-  AAC_WINSEQ_LONG_START = 0x1,
-  AAC_WINSEQ_8_SHORT    = 0x2,
-  AAC_WINSEQ_LONG_STOP  = 0x3,
-};
-
-enum AacWindowShape
-{
-  AAC_WINSHAPE_SINE = 0x0,
-  AAC_WINSHAPE_KB   = 0x1,  // Kaiser-Bessel
 };
 
 struct AacIcsInfo
@@ -122,6 +115,8 @@ AacDecoder::AacDecoder(unsigned int sampleRate)
   m_sampleRateIndex = AacConstants::getIndexBySampleRate(sampleRate);
 
   m_scalefactorBandInfo = AacConstants::getScalefactorBandInfo(m_sampleRateIndex);
+
+  m_blockCount = 0;
 }
 
 // ics_info
@@ -373,7 +368,7 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
 
   int16_t x_quant[1024] = {};
 
-  printf("decodeSpectralData():  window %s  sfbCount %d\n", (info->ics->windowSequence == AAC_WINSEQ_8_SHORT) ? "8_SHORT" : "LONG", info->ics->sfbCount);
+  printf("decodeSpectralData():  windowSequence %s  sfbCount %d\n", AacConstants::getWindowSequenceName(info->ics->windowSequence), info->ics->sfbCount);
 
   for (unsigned int g = 0; g < info->section->windowGroupCount; g++)  // Groups
   {
@@ -398,16 +393,16 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
       if (info->ics->windowSequence != AAC_WINSEQ_8_SHORT)
       {
         // One long window
-        assert(sectionSfbStart < m_scalefactorBandInfo->longWindow->swbCount);
-        assert(sectionSfbEnd   < m_scalefactorBandInfo->longWindow->swbCount);
+        assert(sectionSfbStart <  m_scalefactorBandInfo->longWindow->swbCount);
+        assert(sectionSfbEnd   <= m_scalefactorBandInfo->longWindow->swbCount);
         sectionSampleStart = m_scalefactorBandInfo->longWindow->offsets[sectionSfbStart];
         sectionSampleEnd   = m_scalefactorBandInfo->longWindow->offsets[sectionSfbEnd];
       }
       else
       {
         // Eight short windows
-        assert(sectionSfbStart < m_scalefactorBandInfo->shortWindow->swbCount);
-        assert(sectionSfbEnd   < m_scalefactorBandInfo->shortWindow->swbCount);
+        assert(sectionSfbStart <  m_scalefactorBandInfo->shortWindow->swbCount);
+        assert(sectionSfbEnd   <= m_scalefactorBandInfo->shortWindow->swbCount);
         // TODO: We need to look up the sect_sfb_offset[g][s]
         abort();  // TODO
       }
@@ -446,20 +441,20 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
     }
   }
 
+  // TODO: Max value of elements of x_quant is 8191. Should we be saturating them?
+
   // Dequantize (§ 10.3)
-  double x_invquant[1024];  // TODO: A constant
+  double x_invquant[1024];  // TODO: A constant for length
   for (unsigned int i = 0; i < 1024; i++)
   {
-    // NOTE: The official formula goes to some lengths to preserve the sign:
-    //  x_invquant = sign(x_quant) * (abs(x_quant) ** (4/3))
-    // I suspect this is overkill and negative inputs will always come out
-    //  with a negative result?
+    // This is really just raising the value to the power of (4/3) but
+    //  also preserving the sign of negative values.
     // TODO: Calculate 4/3 outside the loop.
-    x_invquant[i] = pow(x_quant[i], 4.0/3.0);
+    x_invquant[i] = pow(abs(x_quant[i]), 4.0/3.0) * ((x_quant[i] > 0) ? 1.0 : -1.0);
   }
 
   // Rescale (§ 11.3.3)
-  double x_rescal[1024];
+  double x_rescal[1024] = {};
   for (unsigned int g = 0; g < info->section->windowGroupCount; g++)  // Groups
   {
     for (unsigned int sfb = 0; sfb < info->ics->sfbCount; sfb++)
@@ -491,6 +486,68 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
       }
     }
   }
+
+  // TODO: De-interleave the spectral samples when we have short bands?
+  // See figure 6 and § 8.3.5
+  // Is quant_to_spec() in § 9.3 also related?
+
+  // IMDCT
+  constexpr size_t size = 2048;
+  int16_t samples[size];
+  double half = ((size / 2.0) + 1) / 2.0;
+  for (unsigned int s = 0; s < size; s++)  // Audio samples
+  {
+    double sum = 0.0;
+    unsigned int spectralCount = size >> 1;
+    for (unsigned int k = 0; k < spectralCount; k++)  // Spectral coefficients
+    {
+      double v = x_rescal[k] * cos(((M_PI * 2.0) / size) * (s + half) * (k + 0.5));
+      sum += v;
+      //printf("  filterbank: s %d  k %d  x_rescal %f  v %f  sum %f\n", s, k, x_rescal[k], v, sum);
+    }
+
+    sum *= 2.0;  // TEST!!!
+    double sample = (2.0 / size) * sum;
+    samples[s] = sample;
+    printf("samples[%d] = %f  sum %.3f\n", s, sample, sum);
+  }
+
+  // Overlapping with previous samples (§ 15.3.3)
+  static int16_t oldSamples[1024] = {};  // TODO: Constant for length, move to member variable
+  for (unsigned int s = 0; s < 1024; s++)
+  {
+    auto tmp = samples[s];
+    samples[s] += oldSamples[s];
+    printf("overlap[%d]: transform %d  old %d  sum %d\n", s, tmp, oldSamples[s], samples[s]);
+  }
+
+  // Save second half of previous samples for next time
+  for (unsigned int s = 0; s < 1024; s++)
+    oldSamples[s] = samples[s + 1024];
+
+  // Windowing (§ 15.3.2)
+  if (m_blockCount == 0)
+    m_previousWindowShape = info->ics->windowShape;
+
+  // TODO: Windowing
+
+  int fd = open("out.pcm", O_WRONLY|O_APPEND|O_CREAT, 0600);
+  if (fd < 1)
+  {
+    perror("open()");
+    abort();
+  }
+
+  if (write(fd, samples, size * sizeof(int16_t)) != size * sizeof(int16_t))
+  {
+    fprintf(stderr, "write(): Short write\n");
+    abort();
+  }
+
+  close(fd);
+
+  // Remember window shape for next block
+  m_previousWindowShape = info->ics->windowShape;
 
   return true;
 }
@@ -526,6 +583,8 @@ bool AacDecoder::decodeBlock(AacBitReader *reader)
       abort();
     }
   }
+
+  m_blockCount++;
 
   reader->alignToBit(0);
 
