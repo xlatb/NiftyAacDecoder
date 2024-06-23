@@ -30,19 +30,29 @@ enum
 };
 
 // Table 44
+// The names feel a bit misleading. LONG_START is for transitioning to short
+//  windows, and LONG_STOP is for transitioning to long windows.
 enum AacWindowSequence
 {
   AAC_WINSEQ_LONG       = 0x0,
-  AAC_WINSEQ_LONG_START = 0x1,
+  AAC_WINSEQ_LONG_START = 0x1,  // Transition from long to short
   AAC_WINSEQ_8_SHORT    = 0x2,
-  AAC_WINSEQ_LONG_STOP  = 0x3,
+  AAC_WINSEQ_LONG_STOP  = 0x3,  // Transition from short to long
 };
 
 enum AacWindowShape
 {
   AAC_WINSHAPE_SIN = 0x0,
   AAC_WINSHAPE_KBD = 0x1,  // Kaiser-Bessel derived
+
+  AAC_WINSHAPE_COUNT = 2
 };
+
+// Transform window sizes
+constexpr unsigned int AAC_XFORM_WIN_SIZE_LONG      = 2048;
+constexpr unsigned int AAC_XFORM_WIN_SIZE_SHORT     = 256;
+constexpr unsigned int AAC_XFORM_HALFWIN_SIZE_LONG  = 1024;
+constexpr unsigned int AAC_XFORM_HALFWIN_SIZE_SHORT = 128;
 
 // NOTE: We add one extra element to the end of offsets[] with the total
 //  transform length (1024 for long windows and 128 for short windows).

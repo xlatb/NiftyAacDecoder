@@ -1,6 +1,6 @@
 BINS=read
 
-OBJS=AacConstants.o AacBitReader.o \
+OBJS=AacConstants.o AacBitReader.o AacWindows.o \
 	AacDecoder.o AacScalefactorDecoder.o AacSpectrumDecoder.o \
 	AacAdtsFrameHeader.o AacAdtsFrameReader.o AacAdtsFrame.o
 
