@@ -14,6 +14,7 @@
 #include "AacScalefactorDecoder.h"
 #include "AacSpectrumDecoder.h"
 #include "AacConstants.h"
+#include "AacWindows.h"
 
 #include "AacDecoder.h"
 
@@ -493,7 +494,7 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
 
   // IMDCT
   constexpr size_t size = 2048;
-  int16_t samples[size];
+  double samples[size];
   double half = ((size / 2.0) + 1) / 2.0;
   for (unsigned int s = 0; s < size; s++)  // Audio samples
   {
@@ -512,24 +513,50 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
     printf("samples[%d] = %f  sum %.3f\n", s, sample, sum);
   }
 
+  // Windowing (§ 15.3.2)
+  if (m_blockCount == 0)
+    m_previousWindowShape = info->ics->windowShape;
+
+  if (info->ics->windowSequence != AAC_WINSEQ_8_SHORT)
+  {
+    // Long windows
+
+    const double *leftWindow = AacWindows::getLeftWindow(m_previousWindowShape, info->ics->windowSequence);
+    for (unsigned int s = 0; s < AAC_XFORM_HALFWIN_SIZE_LONG; s++)
+      samples[s] *= leftWindow[s];
+
+    const double *rightWindow = AacWindows::getRightWindow(m_previousWindowShape, info->ics->windowSequence);
+    for (unsigned int s = 0; s < AAC_XFORM_HALFWIN_SIZE_LONG; s++)
+      samples[AAC_XFORM_HALFWIN_SIZE_LONG + s] *= rightWindow[s];
+  }
+  else
+  {
+    // TODO: Windowing of short windows
+  }
+
   // Overlapping with previous samples (§ 15.3.3)
-  static int16_t oldSamples[1024] = {};  // TODO: Constant for length, move to member variable
+  static double oldSamples[1024] = {};  // TODO: Constant for length, move to member variable
   for (unsigned int s = 0; s < 1024; s++)
   {
     auto tmp = samples[s];
     samples[s] += oldSamples[s];
-    printf("overlap[%d]: transform %d  old %d  sum %d\n", s, tmp, oldSamples[s], samples[s]);
+    printf("overlap[%d]: transform %f  old %f  sum %f\n", s, tmp, oldSamples[s], samples[s]);
   }
 
   // Save second half of previous samples for next time
   for (unsigned int s = 0; s < 1024; s++)
     oldSamples[s] = samples[s + 1024];
 
-  // Windowing (§ 15.3.2)
-  if (m_blockCount == 0)
-    m_previousWindowShape = info->ics->windowShape;
-
-  // TODO: Windowing
+  // Convert to int16
+  // TODO: We only need to convert the first 1024
+  int16_t final[2048];
+  for (unsigned int s = 0; s < 2048; s++)
+  {
+    if (samples[s] > 0)
+      final[s] = static_cast<int16_t>(samples[s] + 0.5);
+    else
+      final[s] = static_cast<int16_t>(samples[s] - 0.5);
+  }
 
   int fd = open("out.pcm", O_WRONLY|O_APPEND|O_CREAT, 0600);
   if (fd < 1)
@@ -538,7 +565,8 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
     abort();
   }
 
-  if (write(fd, samples, size * sizeof(int16_t)) != size * sizeof(int16_t))
+  unsigned int writeSize = size / 2;  // Only write the first 1024 samples
+  if (write(fd, final, writeSize * sizeof(int16_t)) != writeSize * sizeof(int16_t))
   {
     fprintf(stderr, "write(): Short write\n");
     abort();
