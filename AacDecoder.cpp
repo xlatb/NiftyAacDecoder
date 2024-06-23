@@ -158,7 +158,7 @@ bool AacDecoder::decodeSectionInfo(AacBitReader *reader, const AacIcsInfo *ics, 
     sect->windowCount = 8;
 
     // Decode groups bitmask
-    for (int i = 7; i >= 0; i--)
+    for (int i = 6; i >= 0; i--)
     {
       if ((ics->windowGroupBits >> i & 0x01) == 0)
       {
@@ -179,6 +179,10 @@ bool AacDecoder::decodeSectionInfo(AacBitReader *reader, const AacIcsInfo *ics, 
     sectionLengthBits = 5;
   }
 
+  printf("windowGroupCount: %d\n", sect->windowGroupCount);
+  for (unsigned int g = 0; g < sect->windowGroupCount; g++)
+    printf("windowGroupLengths[%d]: %d\n", g, sect->windowGroupLengths[g]);
+
   unsigned int esc = (1 << sectionLengthBits) - 1;
 
   // For each group, read the huffman codebook number for each band
@@ -190,8 +194,10 @@ bool AacDecoder::decodeSectionInfo(AacBitReader *reader, const AacIcsInfo *ics, 
     while (k < ics->sfbCount)
     {
       unsigned int codebook = reader->readUInt(4);
-      unsigned int len = 0;
 
+      // Read length of section
+      // NOTE: A section length of zero is valid
+      unsigned int len = 0;
       unsigned int l = reader->readUInt(sectionLengthBits);
       while (l == esc)
       {
@@ -199,12 +205,11 @@ bool AacDecoder::decodeSectionInfo(AacBitReader *reader, const AacIcsInfo *ics, 
         l = reader->readUInt(sectionLengthBits);
       }
 
-      if (l == 0)
-        return false;  // Zero-length sections could allow s to overflow our arrays
-      else if (k + l > ics->sfbCount)
+      len += l;
+
+      if (k + len > ics->sfbCount)
         return false;  // We've overflowed the scalefactor bands
 
-      len += l;
       printf("group %d  section %d  codebook 0x%X  start %d  length %d\n", g, s, codebook, k, len);
 
       // Copy the codebook to each band as determined by the length
@@ -215,7 +220,10 @@ bool AacDecoder::decodeSectionInfo(AacBitReader *reader, const AacIcsInfo *ics, 
       sect->windowGroupSections[g].sections[s] = {.start = static_cast<uint8_t>(k), .length = static_cast<uint8_t>(len)};
 
       k += len;
+
       s++;
+      if (s >= AAC_MAX_SFB_COUNT)
+        return false;  // Too many sections
     }
 
     sect->windowGroupSections[g].count = s;
@@ -259,7 +267,7 @@ bool AacDecoder::decodeScalefactorInfo(AacBitReader *reader, AacDecodeInfo *info
 
       sf += sfOffset;
       info->sf->scalefactors[g][sfb] = sf;
-      printf("g %d  sfb %d  sfOffset %d  sf %d\n", g, sfb, sfOffset, sf);
+      printf("g %d  hcb %d  sfb %d  sfOffset %d  sf %d\n", g, hcb, sfb, sfOffset, sf);
     }
   }
 
@@ -404,6 +412,7 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
         // Eight short windows
         assert(sectionSfbStart <  m_scalefactorBandInfo->shortWindow->swbCount);
         assert(sectionSfbEnd   <= m_scalefactorBandInfo->shortWindow->swbCount);
+        //sectionSampleStart = m_scalefactorBandInfo->shortWindow->offsets[
         // TODO: We need to look up the sect_sfb_offset[g][s]
         abort();  // TODO
       }
