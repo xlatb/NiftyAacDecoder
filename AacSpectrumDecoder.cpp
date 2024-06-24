@@ -227,7 +227,7 @@ unsigned int AacSpectrumDecoder::decodeEscape(void)
   }
 
   // Read the escape word bits
-  unsigned int word = m_reader->readUInt(len);
+  unsigned int word = m_reader->readUInt(len + 4);
 
   return (2 << (len + 3)) | word;
 }
