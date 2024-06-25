@@ -1,11 +1,3 @@
-// TODO: Delete
-       #include <sys/types.h>
-       #include <sys/stat.h>
-       #include <fcntl.h>
-       #include <unistd.h>
-
-
-
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -14,8 +6,10 @@
 #include "AacBitReader.h"
 #include "AacScalefactorDecoder.h"
 #include "AacSpectrumDecoder.h"
+#include "AacAudioTools.h"
 #include "AacConstants.h"
 #include "AacWindows.h"
+#include "AacAudioBlock.h"
 
 #include "AacDecoder.h"
 
@@ -65,6 +59,7 @@ struct AacIcsInfo
   AacWindowSequence windowSequence;
   AacWindowShape    windowShape;
   unsigned int      sfbCount;  // Scalefactor band count
+  unsigned int      samplesPerWindow;  // Samples per window according to window size and sfbCount
   uint8_t           windowGroupBits;  // For short windows only
 };
 
@@ -73,14 +68,14 @@ struct AacSectionInfo
   unsigned int windowCount;  // Must be 1 or 8
 
   unsigned int windowGroupCount;
-  struct { uint8_t winStart; uint8_t winLength; } windowGroups[AAC_MAX_WINDOW_GROUPS];
+  struct { uint8_t winStart; uint8_t winLength; uint16_t sampleCount; } windowGroups[AAC_MAX_WINDOW_GROUPS];
 
-  uint8_t      sfbCodebooks[AAC_MAX_WINDOW_GROUPS][AAC_MAX_SFB_COUNT];  // For each group, for each scalefactor band, the codebook
+  uint8_t sfbCodebooks[AAC_MAX_WINDOW_GROUPS][AAC_MAX_SFB_COUNT];  // For each group, for each scalefactor band, the codebook
 
   struct
   {
     uint8_t count;
-    struct { uint8_t sfbStart; uint8_t sfbLength; uint16_t sampleStart; } sections[AAC_MAX_SFB_COUNT];
+    struct { uint8_t sfbStart; uint8_t sfbLength; uint16_t sampleStart; uint16_t sampleCount; } sections[AAC_MAX_SFB_COUNT];
   } windowGroupSections[AAC_MAX_WINDOW_GROUPS];  // For each group, the sections
 };
 
@@ -137,12 +132,18 @@ bool AacDecoder::decodeIcsInfo(AacBitReader *reader, AacIcsInfo *ics)
 
   if (ics->windowSequence == AAC_WINSEQ_8_SHORT)
   {
-    ics->sfbCount        = reader->readUInt(4);
-    ics->windowGroupBits = reader->readUInt(7);
+    ics->sfbCount         = reader->readUInt(4);
+    assert(ics->sfbCount <= m_scalefactorBandInfo->shortWindow->swbCount);
+    ics->samplesPerWindow = m_scalefactorBandInfo->shortWindow->offsets[ics->sfbCount];
+
+    ics->windowGroupBits  = reader->readUInt(7);
+
     return true;
   }
 
   ics->sfbCount = reader->readUInt(6);
+  assert(ics->sfbCount <= m_scalefactorBandInfo->longWindow->swbCount);
+  ics->samplesPerWindow = m_scalefactorBandInfo->longWindow->offsets[ics->sfbCount];
 
   bool predictorDataPresent = reader->readUInt(1);
   assert(predictorDataPresent == false);  // Not allowed in LC (low-complexity)
@@ -158,6 +159,7 @@ bool AacDecoder::decodeSectionInfo(AacBitReader *reader, const AacIcsInfo *ics, 
   sect->windowGroupCount = 1;
   sect->windowGroups[0].winStart = 0;
   sect->windowGroups[0].winLength = 1;
+  sect->windowGroups[0].sampleCount = 0;
 
   if (ics->windowSequence == AAC_WINSEQ_8_SHORT)
   {
@@ -173,6 +175,7 @@ bool AacDecoder::decodeSectionInfo(AacBitReader *reader, const AacIcsInfo *ics, 
         sect->windowGroupCount++;
         sect->windowGroups[sect->windowGroupCount - 1].winStart = 7 - i;
         sect->windowGroups[sect->windowGroupCount - 1].winLength = 1;
+        sect->windowGroups[sect->windowGroupCount - 1].sampleCount = 0;
       }
       else
       {
@@ -187,14 +190,9 @@ bool AacDecoder::decodeSectionInfo(AacBitReader *reader, const AacIcsInfo *ics, 
     sectionLengthBits = 5;
   }
 
-  printf("windowGroupCount: %d\n", sect->windowGroupCount);
-  for (unsigned int g = 0; g < sect->windowGroupCount; g++)
-    printf("  windowGroups[%d]: winStart %d  winLength %d\n", g, sect->windowGroups[g].winStart, sect->windowGroups[g].winLength);
-
   unsigned int esc = (1 << sectionLengthBits) - 1;
 
   // For each group, read the huffman codebook number for each band
-  printf("Sections:\n");
   unsigned int sampleStart = 0;  // Sample start index within bitstream
   for (unsigned int g = 0; g < sect->windowGroupCount; g++)
   {
@@ -220,20 +218,21 @@ bool AacDecoder::decodeSectionInfo(AacBitReader *reader, const AacIcsInfo *ics, 
       if (k + len > ics->sfbCount)
         return false;  // We've overflowed the scalefactor bands
 
-      printf("  group %d  section %d  codebook 0x%X  sfbStart %d  sfbLength %d  sampleStart %d\n", g, sec, codebook, k, len, sampleStart);
-
-      unsigned int sampleWidth;
+      unsigned int sampleCount;
       if (ics->windowSequence != AAC_WINSEQ_8_SHORT)
-        sampleWidth = m_scalefactorBandInfo->longWindow->offsets[k + len] - m_scalefactorBandInfo->longWindow->offsets[k];  // One long window
+        sampleCount = m_scalefactorBandInfo->longWindow->offsets[k + len] - m_scalefactorBandInfo->longWindow->offsets[k];  // One long window
       else
-        sampleWidth = m_scalefactorBandInfo->shortWindow->offsets[k + len] - m_scalefactorBandInfo->shortWindow->offsets[k];  // Eight short windows
+        sampleCount = (m_scalefactorBandInfo->shortWindow->offsets[k + len] - m_scalefactorBandInfo->shortWindow->offsets[k]) * sect->windowGroups[g].winLength;  // Eight short windows
 
       // Copy the codebook to each band as determined by the length
       for (unsigned int sfb = k; sfb < k + len; sfb++)
         sect->sfbCodebooks[g][sfb] = codebook;
 
       // Remember the extent of this section
-      sect->windowGroupSections[g].sections[sec] = {.sfbStart = static_cast<uint8_t>(k), .sfbLength = static_cast<uint8_t>(len), .sampleStart = static_cast<uint16_t>(sampleStart)};
+      sect->windowGroupSections[g].sections[sec] = {.sfbStart = static_cast<uint8_t>(k), .sfbLength = static_cast<uint8_t>(len), .sampleStart = static_cast<uint16_t>(sampleStart), .sampleCount = static_cast<uint16_t>(sampleCount)};
+
+      // Also update the sample count for the entire window group
+      sect->windowGroups[g].sampleCount += sampleCount;
 
       k += len;
 
@@ -241,12 +240,23 @@ bool AacDecoder::decodeSectionInfo(AacBitReader *reader, const AacIcsInfo *ics, 
       if (sec >= AAC_MAX_SFB_COUNT)
         return false;  // Too many sections
 
-      sampleStart += sampleWidth;
-      if (sampleStart > 1024)  // TODO: Constant
+      sampleStart += sampleCount;
+      if (sampleStart > AAC_SPECTRAL_SAMPLE_SIZE_LONG)
         return false;  // Too many samples
     }
 
     sect->windowGroupSections[g].count = sec;
+  }
+
+  printf("Window groups: %d groups\n", sect->windowGroupCount);
+  for (unsigned int g = 0; g < sect->windowGroupCount; g++)
+  {
+    printf("  windowGroups[%d]: winStart %d  winLength %d  sampleCount %d\n", g, sect->windowGroups[g].winStart, sect->windowGroups[g].winLength, sect->windowGroups[g].sampleCount);
+    for (unsigned int sec = 0; sec < sect->windowGroupSections[g].count; sec++)
+    {
+      auto section = sect->windowGroupSections[g].sections[sec];
+      printf("    group %d  section %d  codebook 0x%X  sfbStart %d  sfbLength %d  sampleStart %d  sampleCount %d\n", g, sec, sect->sfbCodebooks[g][section.sfbStart], section.sfbStart, section.sfbLength, section.sampleStart, section.sampleCount);
+    }
   }
 
   return true;
@@ -261,6 +271,7 @@ bool AacDecoder::decodeScalefactorInfo(AacBitReader *reader, AacDecodeInfo *info
   auto sfd = AacScalefactorDecoder(reader);
 
   // For each group, read scalefactors for each scalefactor band
+  printf("Scalefactors:\n");
   for (unsigned int g = 0; g < info->section->windowGroupCount; g++)
   {
     for (unsigned int sfb = 0; sfb < info->ics->sfbCount; sfb++)
@@ -287,7 +298,7 @@ bool AacDecoder::decodeScalefactorInfo(AacBitReader *reader, AacDecodeInfo *info
 
       sf += sfOffset;
       info->sf->scalefactors[g][sfb] = sf;
-      printf("g %d  hcb %d  sfb %d  sfOffset %d  sf %d\n", g, hcb, sfb, sfOffset, sf);
+      printf("  g %d  hcb %d  sfb %d  sfOffset %d  sf %d\n", g, hcb, sfb, sfOffset, sf);
     }
   }
 
@@ -393,20 +404,17 @@ bool AacDecoder::decodeTnsInfo(AacBitReader *reader, AacDecodeInfo *info)
 }
 
 // spectral_data()
-bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
+bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info, int16_t quant[])
 {
   auto sd = AacSpectrumDecoder(reader);
 
-  printf("FRAME %d\n", m_blockCount);
-
-  int16_t x_quant[1024] = {};
+  printf("--- FRAME %d ---\n", m_blockCount);
 
   printf("decodeSpectralData():  windowSequence %s  sfbCount %d\n", AacConstants::getWindowSequenceName(info->ics->windowSequence), info->ics->sfbCount);
 
   for (unsigned int g = 0; g < info->section->windowGroupCount; g++)  // Groups
   {
-    unsigned int groupSampleStart = info->section->windowGroupSections[g].sections[0].sampleStart;
-    printf("- group %d has %d sections: groupSampleStart %u\n", g, info->section->windowGroupSections[g].count, groupSampleStart);
+    printf("- group %d has %d sections\n", g, info->section->windowGroupSections[g].count);
 
     for (unsigned int s = 0; s < info->section->windowGroupSections[g].count; s++)  // Sections
     {
@@ -423,31 +431,21 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
       unsigned int sectionSfbEnd   = sectionSfbStart + info->section->windowGroupSections[g].sections[s].sfbLength;
       assert(sectionSfbEnd <= info->ics->sfbCount);
 
-      unsigned int sectionSampleStart;
-      unsigned int sectionSampleEnd;
+      unsigned int sectionSampleStart = info->section->windowGroupSections[g].sections[s].sampleStart;
+      unsigned int sectionSampleEnd = sectionSampleStart + info->section->windowGroupSections[g].sections[s].sampleCount;
+
+      // TODO: Move these asserts back to the section decoding
       if (info->ics->windowSequence != AAC_WINSEQ_8_SHORT)
       {
         // One long window
         assert(sectionSfbStart <  m_scalefactorBandInfo->longWindow->swbCount);
         assert(sectionSfbEnd   <= m_scalefactorBandInfo->longWindow->swbCount);
-
-        sectionSampleStart = m_scalefactorBandInfo->longWindow->offsets[sectionSfbStart];
-        sectionSampleEnd   = m_scalefactorBandInfo->longWindow->offsets[sectionSfbEnd];
       }
       else
       {
         // Eight short windows
         assert(sectionSfbStart <  m_scalefactorBandInfo->shortWindow->swbCount);
         assert(sectionSfbEnd   <= m_scalefactorBandInfo->shortWindow->swbCount);
-
-        // NOTE: For the short window case, the number of samples to read is multiplied by the window group length
-        sectionSampleStart = m_scalefactorBandInfo->shortWindow->offsets[sectionSfbStart] * info->section->windowGroups[g].winLength;
-        sectionSampleEnd   = m_scalefactorBandInfo->shortWindow->offsets[sectionSfbEnd] * info->section->windowGroups[g].winLength;
-        //unsigned int sectionSampleWidth = (m_scalefactorBandInfo->shortWindow->offsets[sectionSfbEnd] - sectionSampleStart) * info->section->windowGroups[g].winLength;
-        //sectionSampleEnd   = sectionSampleStart + sectionSampleWidth;
-
-        // TODO: We may need to look up the sect_sfb_offset[g][s]?
-        //abort();  // TODO
       }
 
       printf("  group %d  section %d  codebook %2d  sectionSfbStart %2u  sectionSfbEnd %2u  sectionSampleStart %4u  sectionSampleEnd %4u\n", g, s, codebook, sectionSfbStart, sectionSfbEnd, sectionSampleStart, sectionSampleEnd);
@@ -457,15 +455,15 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
         // 4-tuple decode
         for (unsigned int k = sectionSampleStart; k < sectionSampleEnd; k += 4)  // Sample index within group
         {
-          // TODO: If decode4() took an int16_t, we could point it directly at x_quant[] and get rid of v[]?
+          // TODO: If decode4() took an int16_t, we could point it directly at quant[] and get rid of v[]?
           int v[4];
           sd.decode4(codebook, v);
-          unsigned int dstIndex = groupSampleStart + k;
+          unsigned int dstIndex = k;
           printf("    dstIndex %d  sample %d: w %d  x %d  y %d  z %d\n", dstIndex, k, v[0], v[1], v[2], v[3]);
-          x_quant[dstIndex++] = v[0];
-          x_quant[dstIndex++] = v[1];
-          x_quant[dstIndex++] = v[2];
-          x_quant[dstIndex++] = v[3];
+          quant[dstIndex++] = v[0];
+          quant[dstIndex++] = v[1];
+          quant[dstIndex++] = v[2];
+          quant[dstIndex++] = v[3];
         }
       }
       else
@@ -473,20 +471,19 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
         // 2-tuple decode
         for (unsigned int k = sectionSampleStart; k < sectionSampleEnd; k += 2)
         {
-          // TODO: If decode2() took an int16_t, we could point it directly at x_quant[] and get rid of v[]?
+          // TODO: If decode2() took an int16_t, we could point it directly at quant[] and get rid of v[]?
           int v[2];
           sd.decode2(codebook, v);
-          unsigned int dstIndex = groupSampleStart + k;
+          unsigned int dstIndex = k;
           printf("    dstIndex %d  sample %d: y %d z %d\n", dstIndex, k, v[0], v[1]);
-          x_quant[dstIndex++] = v[0];
-          x_quant[dstIndex++] = v[1];
+          quant[dstIndex++] = v[0];
+          quant[dstIndex++] = v[1];
         }
       }
     }
   }
 
   // Deinterlace short blocks if needed
-  // TODO: Is quant_to_spec() in § 9.3 also related?
   if (info->ics->windowSequence == AAC_WINSEQ_8_SHORT)
   {
     // With long windows, we have a single window holding 1024 spectral
@@ -496,74 +493,97 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
     //  then the windows within the window group. We re-order them to instead
     //  be stored by window. then scalefactor band.
     // See figure 6 and § 8.3.5
-    int16_t interlaced[1024];  // TODO: Length constant
-    memcpy(interlaced, x_quant, sizeof(int16_t) * 1024);
+    // See also quant_to_spec() in § 9.3
+    int16_t interlaced[AAC_SPECTRAL_SAMPLE_SIZE_LONG];
+    memcpy(interlaced, quant, sizeof(int16_t) * AAC_SPECTRAL_SAMPLE_SIZE_LONG);
+
+    unsigned int samplesPerWindow = info->ics->samplesPerWindow;
+    printf("sampleIndicesPerWindow: %d\n", samplesPerWindow);
 
     for (unsigned int g = 0; g < info->section->windowGroupCount; g++)  // Groups
     {
-      unsigned int winBase = info->section->windowGroups[g].winStart;  // Base window within group
       unsigned int winCount = info->section->windowGroups[g].winLength;  // Count of windows within group
+      unsigned int groupSampleStart = info->section->windowGroupSections[g].sections[0].sampleStart;
 
-      for (unsigned int sfb = 0; sfb < info->ics->sfbCount; sfb++)  // Scalefactor bands
+      for (unsigned int winOffset = 0; winOffset < winCount; winOffset++)  // Window offset within group
       {
-        for (unsigned int winOffset = 0; winOffset < winCount; winOffset++)  // Window offset within group
+        unsigned int win = info->section->windowGroups[g].winStart + winOffset;
+
+        unsigned int srcIndex = groupSampleStart + winOffset;
+        unsigned int dstIndex = (win * AAC_SPECTRAL_SAMPLE_SIZE_SHORT);
+
+        for (unsigned int s = 0; s < samplesPerWindow; s++)
         {
-          unsigned int srcIndex = (g * (info->ics->sfbCount * winCount)) + (sfb * winCount) + winOffset;
-          unsigned int dstIndex = ((winBase + winOffset) * 128) + sfb;
-          printf("Deinterlace: group %d  winBase %d  winCount %d  winOffset %d  sfb %d: %d -> %d\n", g, winBase, winCount, winOffset, sfb, srcIndex, dstIndex);
-          x_quant[dstIndex] = interlaced[srcIndex];
+          printf("Deinterlace: group %d  winCount %d  winOffset %d  win  %d: %d ← %d\n", g, winCount, winOffset, win, dstIndex, srcIndex);
+          quant[dstIndex] = interlaced[srcIndex];
+          dstIndex++;
+          srcIndex += winCount;
+        }
+
+        for (unsigned int s = samplesPerWindow; s < AAC_SPECTRAL_SAMPLE_SIZE_SHORT; s++)
+        {
+          printf("Deinterlace: group %d   win %d  zerofill: %d\n", g, win, dstIndex);
+          quant[dstIndex++] = 0;
         }
       }
     }
   }
 
-  // TODO: Max value of elements of x_quant is 8191. Should we be saturating them?
-
-  // Dequantize (§ 10.3)
-  double x_invquant[1024];  // TODO: A constant for length
+  // TODO: Max value of elements of quant is 8191. Should we be saturating them?
   for (unsigned int i = 0; i < 1024; i++)
   {
-    // This is really just raising the value to the power of (4/3) but
-    //  also preserving the sign of negative values.
-    // TODO: Calculate 4/3 outside the loop.
-    x_invquant[i] = pow(abs(x_quant[i]), 4.0/3.0) * ((x_quant[i] > 0) ? 1.0 : -1.0);
+    printf("  quant[%d]: %d\n", i, quant[i]);
   }
 
+  return true;
+}
+
+bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info, AacAudioBlock *audio)
+{
+  int16_t quant[AAC_SPECTRAL_SAMPLE_SIZE_LONG] = {};  // Quantized spectal values
+
+  if (!decodeSpectralData(reader, info, quant))
+    return false;
+
+  // Dequantize
+  double dequant[AAC_SPECTRAL_SAMPLE_SIZE_LONG];
+  AacAudioTools::dequantize(quant, dequant);
+
   // Rescale (§ 11.3.3)
-  double x_rescal[1024] = {};
+  double x_rescal[AAC_SPECTRAL_SAMPLE_SIZE_LONG] = {};
   for (unsigned int g = 0; g < info->section->windowGroupCount; g++)  // Groups
   {
     for (unsigned int sfb = 0; sfb < info->ics->sfbCount; sfb++)
     {
-      unsigned int swbStart, swbWidth;
+      unsigned int sampleStart, sampleCount;
       if (info->ics->windowSequence != AAC_WINSEQ_8_SHORT)
       {
         // Long window
-        swbStart = m_scalefactorBandInfo->longWindow->offsets[sfb];
-        swbWidth = m_scalefactorBandInfo->longWindow->offsets[sfb + 1] - swbStart;
+        sampleStart = m_scalefactorBandInfo->longWindow->offsets[sfb];
+        sampleCount = m_scalefactorBandInfo->longWindow->offsets[sfb + 1] - sampleStart;
       }
       else
       {
         // Short window
-        // TODO: Need to adjust start by group number on short windows?
-        swbStart = m_scalefactorBandInfo->shortWindow->offsets[sfb];
-        swbWidth = m_scalefactorBandInfo->shortWindow->offsets[sfb + 1] - swbStart;
+        sampleStart = m_scalefactorBandInfo->shortWindow->offsets[sfb];
+        sampleCount = m_scalefactorBandInfo->shortWindow->offsets[sfb + 1] - sampleStart;
       }
 
       for (unsigned int w = 0; w < info->section->windowGroups[g].winLength; w++)
       {
         double gain = pow(2, 0.25 * (info->sf->scalefactors[g][sfb] - 100));
 
-        for (unsigned int k = 0; k < swbWidth; k++)
+        for (unsigned int k = 0; k < sampleCount; k++)
         {
-          x_rescal[swbStart + k] = x_invquant[swbStart + k] * gain;
-          printf("x_rescal[%d] = %f  group %d  sfb %d  gain %f\n", swbStart + k, x_rescal[swbStart + k], g, sfb, gain);
+          x_rescal[sampleStart + k] = dequant[sampleStart + k] * gain;
+          printf("x_rescal[%d] = %f  group %d  sfb %d  gain %f\n", sampleStart + k, x_rescal[sampleStart + k], g, sfb, gain);
         }
       }
     }
   }
 
   // IMDCT
+  printf("Frame %d samples\n", m_blockCount);
   constexpr size_t size = 2048;
   double samples[size];
   double half = ((size / 2.0) + 1) / 2.0;
@@ -581,7 +601,7 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
     sum *= 2.0;  // TEST!!!
     double sample = (2.0 / size) * sum;
     samples[s] = sample;
-    printf("samples[%d] = %f  sum %.3f\n", s, sample, sum);
+    printf("  samples[%d] = %.3f  sum %.3f\n", s, sample, sum);
   }
 
   // Windowing (§ 15.3.2)
@@ -611,7 +631,7 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
   {
     auto tmp = samples[s];
     samples[s] += oldSamples[s];
-    printf("overlap[%d]: transform %f  old %f  sum %f\n", s, tmp, oldSamples[s], samples[s]);
+    printf("  overlap[%d]: transform %.3f  old %.3f  sum %.3f\n", s, tmp, oldSamples[s], samples[s]);
   }
 
   // Save second half of previous samples for next time
@@ -619,9 +639,8 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
     oldSamples[s] = samples[s + 1024];
 
   // Convert to int16
-  // TODO: We only need to convert the first 1024
-  int16_t final[2048];
-  for (unsigned int s = 0; s < 2048; s++)
+  int16_t final[1024];  // TODO: Constant for length
+  for (unsigned int s = 0; s < 1024; s++)
   {
     if (samples[s] > 0)
       final[s] = static_cast<int16_t>(samples[s] + 0.5);
@@ -629,21 +648,11 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
       final[s] = static_cast<int16_t>(samples[s] - 0.5);
   }
 
-  int fd = open("out.pcm", O_WRONLY|O_APPEND|O_CREAT, 0600);
-  if (fd < 1)
-  {
-    perror("open()");
-    abort();
-  }
-
-  unsigned int writeSize = size / 2;  // Only write the first 1024 samples
-  if (write(fd, final, writeSize * sizeof(int16_t)) != writeSize * sizeof(int16_t))
-  {
-    fprintf(stderr, "write(): Short write\n");
-    abort();
-  }
-
-  close(fd);
+  // Writ the first 1024 samples to the audio buffer
+  int16_t *buf;
+  audio->prepare(m_sampleRate, 1);  // 1 channel
+  audio->getSampleBuffer(&buf);
+  memcpy(buf, final, sizeof(int16_t) * 1024);
 
   // Remember window shape for next block
   m_previousWindowShape = info->ics->windowShape;
@@ -651,7 +660,17 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info)
   return true;
 }
 
-bool AacDecoder::decodeBlock(AacBitReader *reader)
+//bool AacDecoder::decodeAudioShortWindow(AacBitReader *reader, AacDecodeInfo *info, AacAudioBlock *audio)
+//{
+//  int16_t quant[AAC_SPECTRAL_SAMPLE_SIZE_LONG] = {};  // Quantized spectal values
+//
+//  if (!decodeSpectralData(reader, info, quant))
+//    return false;
+//
+//  abort();
+//}
+
+bool AacDecoder::decodeBlock(AacBitReader *reader, AacAudioBlock *audio)
 {
   bool done = false;
 
@@ -670,11 +689,11 @@ bool AacDecoder::decodeBlock(AacBitReader *reader)
         return false;
       break;
     case AAC_ID_SCE:
-      if (!decodeElementSCE(reader))
+      if (!decodeElementSCE(reader, audio))
         return false;
       break;
     case AAC_ID_CPE:
-      if (!decodeElementCPE(reader))
+      if (!decodeElementCPE(reader, audio))
         return false;
       break;
     default:
@@ -708,7 +727,7 @@ bool AacDecoder::decodeElementFIL(AacBitReader *reader)
 }
 
 // Single channel element
-bool AacDecoder::decodeElementSCE(AacBitReader *reader)
+bool AacDecoder::decodeElementSCE(AacBitReader *reader, AacAudioBlock *audio)
 {
   AacIcsInfo ics;
   AacSectionInfo section;
@@ -729,9 +748,10 @@ bool AacDecoder::decodeElementSCE(AacBitReader *reader)
   if (!decodeIcsInfo(reader, &ics))
     return false;
 
-  printf("window seq       : %d\n", ics.windowSequence);
-  printf("window shape     : %d\n", ics.windowShape);
-  printf("scalefactor bands: %d\n", ics.sfbCount);
+  printf("window seq        : %d\n", ics.windowSequence);
+  printf("window shape      : %d\n", ics.windowShape);
+  printf("scalefactor bands : %d\n", ics.sfbCount);
+  printf("samples per window: %d\n", ics.samplesPerWindow);
 
   if (!decodeSectionInfo(reader, &ics, &section))
     return false;
@@ -751,20 +771,22 @@ bool AacDecoder::decodeElementSCE(AacBitReader *reader)
   if (hasGainControl)
     return false;  // Not allowed in LC profile
 
-  if (!decodeSpectralData(reader, &info))
-    return false;
-
-//  // TODO HACK: Always fail on short blocks
-//  if (section.windowCount == 8)
-//    return false;
-
-  // TODO: Decode audio
+  if (section.windowCount == 1)
+  {
+    if (!decodeAudioLongWindow(reader, &info, audio))  // Long window
+      return false;
+  }
+  else
+  {
+    if (!decodeAudioLongWindow(reader, &info, audio))  // Short window (TODO: Switch to decodAudioShortWindow)
+      return false;
+  }
 
   return true;
 }
 
 // Channel pair element
-bool AacDecoder::decodeElementCPE(AacBitReader *reader)
+bool AacDecoder::decodeElementCPE(AacBitReader *reader, AacAudioBlock *audio)
 {
   unsigned int identifier = reader->readUInt(4);
 

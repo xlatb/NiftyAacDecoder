@@ -48,6 +48,10 @@ enum AacWindowShape
   AAC_WINSHAPE_COUNT = 2
 };
 
+// Spectral samples per window
+constexpr unsigned int AAC_SPECTRAL_SAMPLE_SIZE_LONG  = 1024;
+constexpr unsigned int AAC_SPECTRAL_SAMPLE_SIZE_SHORT = 128;
+
 // Transform window sizes
 constexpr unsigned int AAC_XFORM_WIN_SIZE_LONG      = 2048;
 constexpr unsigned int AAC_XFORM_WIN_SIZE_SHORT     = 256;

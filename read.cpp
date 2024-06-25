@@ -15,6 +15,36 @@
 #include "AacAdtsFrame.h"
 #include "AacAdtsFrameReader.h"
 #include "AacDecoder.h"
+#include "AacAudioBlock.h"
+
+uint8_t *mmapFile(const char *filename, size_t *sizePtr)
+{
+  int fd = open(filename, O_RDONLY);
+  if (fd < 0)
+  {
+    fprintf(stderr, "open(): %s\n", strerror(errno));
+    return NULL;
+  }
+
+  off_t size = lseek(fd, 0, SEEK_END);
+  if (size < 0)
+  {
+    fprintf(stderr, "lseek(): %s\n", strerror(errno));
+    return NULL;
+  }
+
+  uint8_t *bytes = (uint8_t *) mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+  if (bytes == MAP_FAILED)
+  {
+    fprintf(stderr, "mmap(): %s\n", strerror(errno));
+    return NULL;
+  }
+
+  close(fd);
+
+  *sizePtr = size;
+  return bytes;
+}
 
 int main(int argc, char *argv[])
 {
@@ -24,28 +54,24 @@ int main(int argc, char *argv[])
     exit(1);
   }
 
-  int fd = open(argv[1], O_RDONLY);
-  if (fd < 0)
+  // Map the input file into memory
+  size_t bytesSize;
+  uint8_t *bytes = mmapFile(argv[1], &bytesSize);
+  if (!bytes)
   {
-    fprintf(stderr, "%s: open(): %s\n", argv[0], strerror(errno));
+    fprintf(stderr, "Couldn't open input file.\n");
     exit(1);
   }
 
-  off_t size = lseek(fd, 0, SEEK_END);
-  if (size < 0)
+  // Open the output file
+  int fd = open("out.pcm", O_WRONLY|O_CREAT|O_TRUNC, 0600);
+  if (fd < 1)
   {
-    fprintf(stderr, "%s: lseek(): %s\n", argv[0], strerror(errno));
-    exit(1);
+    perror("open()");
+    abort();
   }
 
-  uint8_t *bytes = (uint8_t *) mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
-  if (bytes == MAP_FAILED)
-  {
-    fprintf(stderr, "%s: mmap(): %s\n", argv[0], strerror(errno));
-    exit(1);
-  }
-
-  auto reader = AacAdtsFrameReader(bytes, size);
+  auto reader = AacAdtsFrameReader(bytes, bytesSize);
 
   // Skip over any initial ID3 tag
   if (size_t id3Size = reader.skipID3())
@@ -68,6 +94,8 @@ int main(int argc, char *argv[])
   // Create decoder
   auto decoder = AacDecoder(header.getSampleRate());
 
+  AacAudioBlock audio;
+
   while (!reader.isComplete())
   {
     auto frame = AacAdtsFrame();
@@ -86,7 +114,17 @@ int main(int argc, char *argv[])
       decoder = AacDecoder(frame.getHeader()->getSampleRate());
     }
 
-    if (!decoder.decodeBlock(frame.getReader()))
+    if (decoder.decodeBlock(frame.getReader(), &audio))
+    {
+      int16_t *buf;
+      auto size = audio.getSampleBuffer(&buf);
+      if (write(fd, buf, size) != static_cast<ssize_t>(size))
+      {
+        fprintf(stderr, "write(): Short write\n");
+        abort();
+      }
+    }
+    else
     {
       fprintf(stderr, "Failed to decode block\n");
 //      exit(1);
@@ -95,6 +133,8 @@ int main(int argc, char *argv[])
     size_t frameSize = frame.getSize();
     reader.advance(frameSize);
   }
+
+  close(fd);
 
   return 0;
 }

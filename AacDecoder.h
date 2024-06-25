@@ -6,6 +6,7 @@
 #define AAC_DECODER_H
 
 class AacBitReader;
+class AacAudioBlock;
 
 struct AacIcsInfo;
 struct AacSectionInfo;
@@ -22,21 +23,24 @@ class AacDecoder
 
   AacWindowShape m_previousWindowShape;
 
-public:
-  AacDecoder(unsigned int sampleRate);
-
   bool decodeIcsInfo(AacBitReader *reader, AacIcsInfo *info);
   bool decodeSectionInfo(AacBitReader *reader, const AacIcsInfo *info, AacSectionInfo *sect);
   bool decodeScalefactorInfo(AacBitReader *reader, AacDecodeInfo *info);
   bool decodePulseInfo(AacBitReader *reader, AacDecodeInfo *info);
   bool decodeTnsInfo(AacBitReader *reader, AacDecodeInfo *info);
-  bool decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info);
+  bool decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info, int16_t quant[]);
 
-  bool decodeBlock(AacBitReader *reader);
+  bool decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info, AacAudioBlock *audio);
+  bool decodeAudioShortWindow(AacBitReader *reader, AacDecodeInfo *info, AacAudioBlock *audio);
 
   bool decodeElementFIL(AacBitReader *reader);
-  bool decodeElementSCE(AacBitReader *reader);
-  bool decodeElementCPE(AacBitReader *reader);
+  bool decodeElementSCE(AacBitReader *reader, AacAudioBlock *audio);
+  bool decodeElementCPE(AacBitReader *reader, AacAudioBlock *audio);
+
+public:
+  AacDecoder(unsigned int sampleRate);
+
+  bool decodeBlock(AacBitReader *reader, AacAudioBlock *audio);
 
   unsigned int getSampleRate(void) { return m_sampleRate; };
 };
