@@ -553,30 +553,38 @@ bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info
   double x_rescal[AAC_SPECTRAL_SAMPLE_SIZE_LONG] = {};
   for (unsigned int g = 0; g < info->section->windowGroupCount; g++)  // Groups
   {
+    unsigned int winCount = info->section->windowGroups[g].winLength;  // Count of windows within group
+
     for (unsigned int sfb = 0; sfb < info->ics->sfbCount; sfb++)
     {
-      unsigned int sampleStart, sampleCount;
+      unsigned int sfbSampleStart, sfbSampleCount;
       if (info->ics->windowSequence != AAC_WINSEQ_8_SHORT)
       {
         // Long window
-        sampleStart = m_scalefactorBandInfo->longWindow->offsets[sfb];
-        sampleCount = m_scalefactorBandInfo->longWindow->offsets[sfb + 1] - sampleStart;
+        sfbSampleStart = m_scalefactorBandInfo->longWindow->offsets[sfb];
+        sfbSampleCount = m_scalefactorBandInfo->longWindow->offsets[sfb + 1] - sfbSampleStart;
       }
       else
       {
         // Short window
-        sampleStart = m_scalefactorBandInfo->shortWindow->offsets[sfb];
-        sampleCount = m_scalefactorBandInfo->shortWindow->offsets[sfb + 1] - sampleStart;
+        sfbSampleStart = m_scalefactorBandInfo->shortWindow->offsets[sfb];
+        sfbSampleCount = m_scalefactorBandInfo->shortWindow->offsets[sfb + 1] - sfbSampleStart;
       }
 
-      for (unsigned int w = 0; w < info->section->windowGroups[g].winLength; w++)
-      {
-        double gain = pow(2, 0.25 * (info->sf->scalefactors[g][sfb] - 100));
+      double gain = pow(2, 0.25 * (info->sf->scalefactors[g][sfb] - 100));
 
-        for (unsigned int k = 0; k < sampleCount; k++)
+      for (unsigned int winOffset = 0; winOffset < winCount; winOffset++)
+      {
+        unsigned int win = info->section->windowGroups[g].winStart + winOffset;
+
+        // NOTE: The win variable should always be 0 for a long window, so this should be safe.
+        unsigned int winSampleStart = win * AAC_SPECTRAL_SAMPLE_SIZE_SHORT;
+
+        unsigned int sampleBase = winSampleStart + sfbSampleStart;
+        for (unsigned int k = 0; k < sfbSampleCount; k++)
         {
-          x_rescal[sampleStart + k] = dequant[sampleStart + k] * gain;
-          printf("x_rescal[%d] = %f  group %d  sfb %d  gain %f\n", sampleStart + k, x_rescal[sampleStart + k], g, sfb, gain);
+          x_rescal[sampleBase + k] = dequant[sampleBase + k] * gain;
+          printf("x_rescal[%d] = %f  group %d  sfb %d  gain %f\n", sampleBase + k, x_rescal[sampleBase + k], g, sfb, gain);
         }
       }
     }
@@ -584,24 +592,17 @@ bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info
 
   // IMDCT
   printf("Frame %d samples\n", m_blockCount);
-  constexpr size_t size = 2048;
-  double samples[size];
-  double half = ((size / 2.0) + 1) / 2.0;
-  for (unsigned int s = 0; s < size; s++)  // Audio samples
+  double samples[AAC_XFORM_WIN_SIZE_LONG];
+  if (info->ics->windowSequence != AAC_WINSEQ_8_SHORT)
   {
-    double sum = 0.0;
-    unsigned int spectralCount = size >> 1;
-    for (unsigned int k = 0; k < spectralCount; k++)  // Spectral coefficients
-    {
-      double v = x_rescal[k] * cos(((M_PI * 2.0) / size) * (s + half) * (k + 0.5));
-      sum += v;
-      //printf("  filterbank: s %d  k %d  x_rescal %f  v %f  sum %f\n", s, k, x_rescal[k], v, sum);
-    }
-
-    sum *= 2.0;  // TEST!!!
-    double sample = (2.0 / size) * sum;
-    samples[s] = sample;
-    printf("  samples[%d] = %.3f  sum %.3f\n", s, sample, sum);
+    // One long window
+    AacAudioTools::IMDCTLong(x_rescal, samples);
+  }
+  else
+  {
+    // Eight short windows
+    for (unsigned int w = 0; w < 8; w++)
+      AacAudioTools::IMDCTShort(x_rescal + (w * AAC_SPECTRAL_SAMPLE_SIZE_SHORT), samples + (w * AAC_XFORM_WIN_SIZE_SHORT));
   }
 
   // Windowing (§ 15.3.2)
