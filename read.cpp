@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <endian.h>
 
 #include "AacAdtsFrameHeader.h"
 #include "AacAdtsFrame.h"
@@ -118,11 +119,16 @@ int main(int argc, char *argv[])
     {
       int16_t *buf;
       auto size = audio.getSampleBuffer(&buf);
-      if (write(fd, buf, size) != static_cast<ssize_t>(size))
+      for (unsigned int s = 0; s < 1024; s++)
       {
-        fprintf(stderr, "write(): Short write\n");
-        abort();
+        uint16_t sample = htobe16(buf[s]);
+        write(fd, &sample, sizeof(sample));
       }
+//      if (write(fd, buf, size) != static_cast<ssize_t>(size))
+//      {
+//        fprintf(stderr, "write(): Short write\n");
+//        abort();
+//      }
     }
     else
     {

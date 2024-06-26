@@ -9,7 +9,7 @@ constexpr double dequantizePower = 4.0 / 3.0;
 namespace AacAudioTools
 {
   // Dequantize (§ 10.3)
-  void dequantize(int16_t quant[AAC_SPECTRAL_SAMPLE_SIZE_LONG], double dequant[AAC_SPECTRAL_SAMPLE_SIZE_LONG])
+  void dequantize(const int16_t quant[AAC_SPECTRAL_SAMPLE_SIZE_LONG], double dequant[AAC_SPECTRAL_SAMPLE_SIZE_LONG])
   {
     for (unsigned int s = 0; s < AAC_SPECTRAL_SAMPLE_SIZE_LONG; s++)
     {
@@ -20,7 +20,7 @@ namespace AacAudioTools
   }
 
   // IMDCT for long windows
-  void IMDCTLong(double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_LONG], double samples[AAC_XFORM_WIN_SIZE_LONG])
+  void IMDCTLong(const double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_LONG], double samples[AAC_XFORM_WIN_SIZE_LONG])
   {
     constexpr double n0 = ((AAC_XFORM_WIN_SIZE_LONG / 2.0) + 1.0) / 2.0;
 
@@ -33,7 +33,8 @@ namespace AacAudioTools
         sum += v;
       }
 
-      double sample = (2.0 / AAC_SPECTRAL_SAMPLE_SIZE_LONG) * sum;
+      //sum /= 2.0; // TODO: TEST - check output level
+      double sample = (2.0 / AAC_SPECTRAL_SAMPLE_SIZE_LONG) * sum;  // TODO: AAC_XFORM_WIN_SIZE_LONG?
       samples[s] = sample;
       printf("  samples[%d] = %.3f  sum %.3f\n", s, sample, sum);
     }
@@ -41,7 +42,7 @@ namespace AacAudioTools
   }
 
   // IMDCT for short windows
-  void IMDCTShort(double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_SHORT], double samples[AAC_XFORM_WIN_SIZE_SHORT])
+  void IMDCTShort(const double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_SHORT], double samples[AAC_XFORM_WIN_SIZE_SHORT])
   {
     constexpr double n0 = ((AAC_XFORM_WIN_SIZE_SHORT / 2.0) + 1.0) / 2.0;
 
@@ -54,11 +55,17 @@ namespace AacAudioTools
         sum += v;
       }
 
-      double sample = (2.0 / AAC_SPECTRAL_SAMPLE_SIZE_SHORT) * sum;
+      //sum /= 2.0; // TODO: TEST - check output level
+      double sample = (2.0 / AAC_SPECTRAL_SAMPLE_SIZE_SHORT) * sum;  // TODO: AAC_XFORM_WIN_SIZE_LONG?
       samples[s] = sample;
       printf("  samples[%d] = %.3f  sum %.3f\n", s, sample, sum);
     }
 
   }
 
+  void window(const double window[], double samples[], unsigned int count)
+  {
+    for (unsigned int s = 0; s < count; s++)
+      samples[s] *= window[s];
+  }
 };

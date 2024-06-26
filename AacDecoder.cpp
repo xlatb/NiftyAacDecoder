@@ -614,16 +614,57 @@ bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info
     // Long windows
 
     const double *leftWindow = AacWindows::getLeftWindow(m_previousWindowShape, info->ics->windowSequence);
-    for (unsigned int s = 0; s < AAC_XFORM_HALFWIN_SIZE_LONG; s++)
-      samples[s] *= leftWindow[s];
+    AacAudioTools::window(leftWindow, samples, AAC_XFORM_HALFWIN_SIZE_LONG);
 
-    const double *rightWindow = AacWindows::getRightWindow(m_previousWindowShape, info->ics->windowSequence);
-    for (unsigned int s = 0; s < AAC_XFORM_HALFWIN_SIZE_LONG; s++)
-      samples[AAC_XFORM_HALFWIN_SIZE_LONG + s] *= rightWindow[s];
+    const double *rightWindow = AacWindows::getRightWindow(info->ics->windowShape, info->ics->windowSequence);
+    AacAudioTools::window(rightWindow, samples + AAC_XFORM_HALFWIN_SIZE_LONG, AAC_XFORM_HALFWIN_SIZE_LONG);
   }
   else
   {
-    // TODO: Windowing of short windows
+    // Short windows
+
+    const double *leftWindow = AacWindows::getLeftWindow(m_previousWindowShape, info->ics->windowSequence);
+    AacAudioTools::window(leftWindow, samples, AAC_XFORM_HALFWIN_SIZE_SHORT);
+
+    const double *rightWindow = AacWindows::getRightWindow(info->ics->windowShape, info->ics->windowSequence);
+    AacAudioTools::window(rightWindow, samples + AAC_XFORM_HALFWIN_SIZE_SHORT, AAC_XFORM_HALFWIN_SIZE_SHORT);
+
+    leftWindow = AacWindows::getLeftWindow(info->ics->windowShape, info->ics->windowSequence);
+    AacAudioTools::window(leftWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT * 2), AAC_XFORM_HALFWIN_SIZE_SHORT);
+    AacAudioTools::window(rightWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT * 3), AAC_XFORM_HALFWIN_SIZE_SHORT);
+    AacAudioTools::window(leftWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT * 4), AAC_XFORM_HALFWIN_SIZE_SHORT);
+    AacAudioTools::window(rightWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT * 5), AAC_XFORM_HALFWIN_SIZE_SHORT);
+    AacAudioTools::window(leftWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT * 6), AAC_XFORM_HALFWIN_SIZE_SHORT);
+    AacAudioTools::window(rightWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT * 7), AAC_XFORM_HALFWIN_SIZE_SHORT);
+
+    // Internal overlap of short windows
+    double input[AAC_XFORM_WIN_SIZE_LONG];
+    memcpy(input, samples, sizeof(double) * AAC_XFORM_WIN_SIZE_LONG);
+
+    for (unsigned int s = 0; s < 448; s++)
+      samples[s] = 0.0;
+
+    for (unsigned int s = 0; s < 128; s++)
+      samples[s + 448] = input[s];
+    for (unsigned int s = 0; s < 128; s++)
+      samples[s + 576] = input[s + 128] + input[s + 256];
+    for (unsigned int s = 0; s < 128; s++)
+      samples[s + 704] = input[s + 384] + input[s + 512];
+    for (unsigned int s = 0; s < 128; s++)
+      samples[s + 832] = input[s + 640] + input[s + 768];
+    for (unsigned int s = 0; s < 128; s++)
+      samples[s + 960] = input[s + 896] + input[s + 1024];
+    for (unsigned int s = 0; s < 128; s++)
+      samples[s + 1088] = input[s + 1152] + input[s + 1280];
+    for (unsigned int s = 0; s < 128; s++)
+      samples[s + 1216] = input[s + 1408] + input[s + 1536];
+    for (unsigned int s = 0; s < 128; s++)
+      samples[s + 1344] = input[s + 1664] + input[s + 1792];
+    for (unsigned int s = 0; s < 128; s++)
+      samples[s + 1472] = input[s + 1920];
+
+    for (unsigned int s = 0; s < 448; s++)
+      samples[s + 1600] = 0.0;
   }
 
   // Overlapping with previous samples (§ 15.3.3)
@@ -649,7 +690,7 @@ bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info
       final[s] = static_cast<int16_t>(samples[s] - 0.5);
   }
 
-  // Writ the first 1024 samples to the audio buffer
+  // Write the first 1024 samples to the audio buffer
   int16_t *buf;
   audio->prepare(m_sampleRate, 1);  // 1 channel
   audio->getSampleBuffer(&buf);
