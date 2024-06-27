@@ -615,8 +615,6 @@ bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info
   if (m_blockCount == 0)
     m_previousWindowShape = info->ics->windowShape;
 
-  static double oldSamples[1024] = {};  // TODO: Constant for length, move to member variable
-
   if (info->ics->windowSequence != AAC_WINSEQ_8_SHORT)
   {
     // Long windows
@@ -689,6 +687,7 @@ bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info
   // We could maybe take advantage of this when summing samples.
 
   // Overlapping with previous samples (§ 15.3.3)
+  static double oldSamples[1024] = {};  // TODO: Constant for length, move to member variable
   for (unsigned int s = 0; s < 1024; s++)  // TODO: Constant
   {
     auto tmp = samples[s];
@@ -810,8 +809,8 @@ bool AacDecoder::decodeElementSCE(AacBitReader *reader, AacAudioBlock *audio)
   if (!decodeIcsInfo(reader, &ics))
     return false;
 
-  printf("window seq        : %d\n", ics.windowSequence);
-  printf("window shape      : %d\n", ics.windowShape);
+  printf("window seq        : %d (%s)\n", ics.windowSequence, AacConstants::getWindowSequenceName(ics.windowSequence));
+  printf("window shape      : %d (%s)\n", ics.windowShape, AacConstants::getWindowShapeName(ics.windowShape));
   printf("scalefactor bands : %d\n", ics.sfbCount);
   printf("samples per window: %d\n", ics.samplesPerWindow);
 

@@ -203,7 +203,7 @@ namespace AacWindows
     {
       double numerator = 0.0;
       for (unsigned int p = 0; p <= i; p++)
-        numerator += kbdShort[p];
+        numerator += kbdLong[p];
 
       *out++ = sqrt(numerator / kbdLongDenominator);
     }
@@ -216,8 +216,8 @@ namespace AacWindows
     for (unsigned int i = 0; i < AAC_XFORM_HALFWIN_SIZE_SHORT; i++)
     {
       double numerator = 0.0;
-      for (unsigned int p = 0; p <= i; p++)
-        numerator += kbdShort[AAC_XFORM_HALFWIN_SIZE_SHORT - 1 - p];
+      for (unsigned int p = 0; p <= AAC_XFORM_HALFWIN_SIZE_SHORT - 1 - i; p++)
+        numerator += kbdShort[p];
 
       *out++ = sqrt(numerator / kbdShortDenominator);
     }
@@ -230,8 +230,8 @@ namespace AacWindows
     for (unsigned int i = 0; i < AAC_XFORM_HALFWIN_SIZE_LONG; i++)
     {
       double numerator = 0.0;
-      for (unsigned int p = 0; p <= i; p++)
-        numerator += kbdShort[AAC_XFORM_HALFWIN_SIZE_LONG - 1 - p];
+      for (unsigned int p = 0; p <= AAC_XFORM_HALFWIN_SIZE_LONG - 1 - i; p++)
+        numerator += kbdLong[p];
 
       *out++ = sqrt(numerator / kbdLongDenominator);
     }
