@@ -93,6 +93,7 @@ struct AacPulseInfo
 
 struct AacTnsInfo
 {
+  bool    isEnabled;
   uint8_t filterCount[AAC_MAX_WINDOW_COUNT];  // For each window, the number of filters [0..3]
   uint8_t coefficientBits[AAC_MAX_WINDOW_COUNT];  // [3..4]
 
@@ -340,7 +341,13 @@ bool AacDecoder::decodeTnsInfo(AacBitReader *reader, AacDecodeInfo *info)
 {
   bool hasTns = reader->readUInt(1);
   if (!hasTns)
+  {
+    info->tns.isEnabled = false;
     return true;
+  }
+
+  printf("Frame %d TNS enabled\n", m_blockCount);
+  info->tns.isEnabled = true;
 
   // § 14.2.1
   unsigned int filterCountBits;
@@ -497,39 +504,32 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info, i
     int16_t interlaced[AAC_SPECTRAL_SAMPLE_SIZE_LONG];
     memcpy(interlaced, quant, sizeof(int16_t) * AAC_SPECTRAL_SAMPLE_SIZE_LONG);
 
-    unsigned int samplesPerWindow = info->ics->samplesPerWindow;
-    printf("sampleIndicesPerWindow: %d\n", samplesPerWindow);
-
+    unsigned int srcIndex = 0;
     for (unsigned int g = 0; g < info->section->windowGroupCount; g++)  // Groups
     {
       unsigned int winCount = info->section->windowGroups[g].winLength;  // Count of windows within group
-      unsigned int groupSampleStart = info->section->windowGroupSections[g].sections[0].sampleStart;
 
-      for (unsigned int winOffset = 0; winOffset < winCount; winOffset++)  // Window offset within group
+      for (unsigned int sfb = 0; sfb < info->ics->sfbCount; sfb++)  // Each SFB
       {
-        unsigned int win = info->section->windowGroups[g].winStart + winOffset;
-
-        unsigned int srcIndex = groupSampleStart + winOffset;
-        unsigned int dstIndex = (win * AAC_SPECTRAL_SAMPLE_SIZE_SHORT);
-
-        for (unsigned int s = 0; s < samplesPerWindow; s++)
+        for (unsigned int winOffset = 0; winOffset < winCount; winOffset++)  // Window offset within group
         {
-          printf("Deinterlace: group %d  winCount %d  winOffset %d  win  %d: %d ← %d\n", g, winCount, winOffset, win, dstIndex, srcIndex);
-          quant[dstIndex] = interlaced[srcIndex];
-          dstIndex++;
-          srcIndex += winCount;
-        }
+          unsigned int win = info->section->windowGroups[g].winStart + winOffset;
 
-        for (unsigned int s = samplesPerWindow; s < AAC_SPECTRAL_SAMPLE_SIZE_SHORT; s++)
-        {
-          printf("Deinterlace: group %d   win %d  zerofill: %d\n", g, win, dstIndex);
-          quant[dstIndex++] = 0;
+          unsigned int sfbSampleStart = m_scalefactorBandInfo->shortWindow->offsets[sfb];
+          unsigned int sfbSampleCount = m_scalefactorBandInfo->shortWindow->offsets[sfb + 1] - sfbSampleStart;
+
+          unsigned int dstIndex = (win * AAC_SPECTRAL_SAMPLE_SIZE_SHORT) + sfbSampleStart;
+          for (unsigned int s = 0; s < sfbSampleCount; s++)
+          {
+            printf("Deinterlace: group %d  winCount %d  winOffset %d  win  %d  sfb %d: %d ← %d\n", g, winCount, winOffset, win, sfb, dstIndex, srcIndex);
+            quant[dstIndex++] = interlaced[srcIndex++];
+          }
         }
       }
     }
   }
 
-  // TODO: Max value of elements of quant is 8191. Should we be saturating them?
+  // TODO: Max abs(value) of each element of quant is 8191. Should we be saturating them?
   for (unsigned int i = 0; i < 1024; i++)
   {
     printf("  quant[%d]: %d\n", i, quant[i]);
@@ -584,7 +584,7 @@ bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info
         for (unsigned int k = 0; k < sfbSampleCount; k++)
         {
           x_rescal[sampleBase + k] = dequant[sampleBase + k] * gain;
-          printf("x_rescal[%d] = %f  group %d  sfb %d  gain %f\n", sampleBase + k, x_rescal[sampleBase + k], g, sfb, gain);
+          printf("  x_rescal[%d] = %f  group %d  sfb %d  dequant %f  gain %f\n", sampleBase + k, x_rescal[sampleBase + k], g, sfb, dequant[sampleBase + k], gain);
         }
       }
     }
