@@ -24,6 +24,9 @@ namespace AacAudioTools
   {
     constexpr double n0 = ((AAC_XFORM_WIN_SIZE_LONG / 2.0) + 1.0) / 2.0;
 
+    for (unsigned int s = 0; s < AAC_SPECTRAL_SAMPLE_SIZE_LONG; s++)
+      printf("  coefficients[%d] = %.3f\n", s, coefficients[s]);
+
     for (unsigned int s = 0; s < AAC_XFORM_WIN_SIZE_LONG; s++)  // Audio samples
     {
       double sum = 0.0;
@@ -36,7 +39,8 @@ namespace AacAudioTools
       //sum /= 2.0; // TODO: TEST - check output level
       double sample = (2.0 / AAC_SPECTRAL_SAMPLE_SIZE_LONG) * sum;  // TODO: AAC_XFORM_WIN_SIZE_LONG?
       samples[s] = sample;
-      printf("  samples[%d] = %.3f  sum %.3f\n", s, sample, sum);
+      //printf("  samples[%d] = %.3f  sum %.3f\n", s, sample, sum);
+      printf("  samples[%d] = %.3f\n", s, sample);
     }
 
   }
@@ -45,6 +49,9 @@ namespace AacAudioTools
   void IMDCTShort(const double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_SHORT], double samples[AAC_XFORM_WIN_SIZE_SHORT])
   {
     constexpr double n0 = ((AAC_XFORM_WIN_SIZE_SHORT / 2.0) + 1.0) / 2.0;
+
+    for (unsigned int s = 0; s < AAC_SPECTRAL_SAMPLE_SIZE_SHORT; s++)
+      printf("  coefficients[%d] = %.3f\n", s, coefficients[s]);
 
     for (unsigned int s = 0; s < AAC_XFORM_WIN_SIZE_SHORT; s++)  // Audio samples
     {
@@ -58,7 +65,8 @@ namespace AacAudioTools
       //sum /= 2.0; // TODO: TEST - check output level
       double sample = (2.0 / AAC_SPECTRAL_SAMPLE_SIZE_SHORT) * sum;  // TODO: AAC_XFORM_WIN_SIZE_LONG?
       samples[s] = sample;
-      printf("  samples[%d] = %.3f  sum %.3f\n", s, sample, sum);
+      //printf("  samples[%d] = %.3f  sum %.3f\n", s, sample, sum);
+      printf("  samples[%d] = %.3f\n", s, sample);
     }
 
   }

@@ -299,7 +299,7 @@ bool AacDecoder::decodeScalefactorInfo(AacBitReader *reader, AacDecodeInfo *info
 
       sf += sfOffset;
       info->sf->scalefactors[g][sfb] = sf;
-      printf("  g %d  hcb %d  sfb %d  sfOffset %d  sf %d\n", g, hcb, sfb, sfOffset, sf);
+      printf("  g %d  hcb 0x%X  sfb %2d  sfOffset %2d  sf %d\n", g, hcb, sfb, sfOffset, sf);
     }
   }
 
@@ -490,6 +490,12 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info, i
     }
   }
 
+  // TODO: Max abs(value) of each element of quant is 8191. Should we be saturating them?
+  for (unsigned int i = 0; i < 1024; i++)
+  {
+    printf("  quant[%d]: %d\n", i, quant[i]);
+  }
+
   // Deinterlace short blocks if needed
   if (info->ics->windowSequence == AAC_WINSEQ_8_SHORT)
   {
@@ -503,6 +509,7 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info, i
     // See also quant_to_spec() in § 9.3
     int16_t interlaced[AAC_SPECTRAL_SAMPLE_SIZE_LONG];
     memcpy(interlaced, quant, sizeof(int16_t) * AAC_SPECTRAL_SAMPLE_SIZE_LONG);
+    memset(quant, 0, sizeof(int16_t) * AAC_SPECTRAL_SAMPLE_SIZE_LONG);  // TODO HACK
 
     unsigned int srcIndex = 0;
     for (unsigned int g = 0; g < info->section->windowGroupCount; g++)  // Groups
@@ -521,19 +528,17 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info, i
           unsigned int dstIndex = (win * AAC_SPECTRAL_SAMPLE_SIZE_SHORT) + sfbSampleStart;
           for (unsigned int s = 0; s < sfbSampleCount; s++)
           {
-            printf("Deinterlace: group %d  winCount %d  winOffset %d  win  %d  sfb %d: %d ← %d\n", g, winCount, winOffset, win, sfb, dstIndex, srcIndex);
+            //printf("Deinterlace: group %d  winCount %d  winOffset %d  win  %d  sfb %d: %d ← %d\n", g, winCount, winOffset, win, sfb, dstIndex, srcIndex);
             quant[dstIndex++] = interlaced[srcIndex++];
           }
         }
       }
     }
+
+    for (unsigned int i = 0; i < 1024; i++)
+      printf("  deinterlaced[%d]: %d\n", i, quant[i]);
   }
 
-  // TODO: Max abs(value) of each element of quant is 8191. Should we be saturating them?
-  for (unsigned int i = 0; i < 1024; i++)
-  {
-    printf("  quant[%d]: %d\n", i, quant[i]);
-  }
 
   return true;
 }
@@ -572,6 +577,7 @@ bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info
       }
 
       double gain = pow(2, 0.25 * (info->sf->scalefactors[g][sfb] - 100));
+      printf("  Rescale group %d  sfb %d  sfbSampleStart %d  sfbSampleCount %d  gain %f\n", g, sfb, sfbSampleStart, sfbSampleCount, gain);
 
       for (unsigned int winOffset = 0; winOffset < winCount; winOffset++)
       {
@@ -584,7 +590,7 @@ bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info
         for (unsigned int k = 0; k < sfbSampleCount; k++)
         {
           x_rescal[sampleBase + k] = dequant[sampleBase + k] * gain;
-          printf("  x_rescal[%d] = %f  group %d  sfb %d  dequant %f  gain %f\n", sampleBase + k, x_rescal[sampleBase + k], g, sfb, dequant[sampleBase + k], gain);
+          printf("    x_rescal[%d] = %f  group %d  sfb %d  dequant %f  gain %f\n", sampleBase + k, x_rescal[sampleBase + k], g, sfb, dequant[sampleBase + k], gain);
         }
       }
     }
@@ -609,6 +615,8 @@ bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info
   if (m_blockCount == 0)
     m_previousWindowShape = info->ics->windowShape;
 
+  static double oldSamples[1024] = {};  // TODO: Constant for length, move to member variable
+
   if (info->ics->windowSequence != AAC_WINSEQ_8_SHORT)
   {
     // Long windows
@@ -618,6 +626,7 @@ bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info
 
     const double *rightWindow = AacWindows::getRightWindow(info->ics->windowShape, info->ics->windowSequence);
     AacAudioTools::window(rightWindow, samples + AAC_XFORM_HALFWIN_SIZE_LONG, AAC_XFORM_HALFWIN_SIZE_LONG);
+
   }
   else
   {
@@ -630,12 +639,20 @@ bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info
     AacAudioTools::window(rightWindow, samples + AAC_XFORM_HALFWIN_SIZE_SHORT, AAC_XFORM_HALFWIN_SIZE_SHORT);
 
     leftWindow = AacWindows::getLeftWindow(info->ics->windowShape, info->ics->windowSequence);
-    AacAudioTools::window(leftWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT * 2), AAC_XFORM_HALFWIN_SIZE_SHORT);
-    AacAudioTools::window(rightWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT * 3), AAC_XFORM_HALFWIN_SIZE_SHORT);
-    AacAudioTools::window(leftWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT * 4), AAC_XFORM_HALFWIN_SIZE_SHORT);
-    AacAudioTools::window(rightWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT * 5), AAC_XFORM_HALFWIN_SIZE_SHORT);
-    AacAudioTools::window(leftWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT * 6), AAC_XFORM_HALFWIN_SIZE_SHORT);
-    AacAudioTools::window(rightWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT * 7), AAC_XFORM_HALFWIN_SIZE_SHORT);
+    AacAudioTools::window(leftWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT *  2), AAC_XFORM_HALFWIN_SIZE_SHORT);  // 1
+    AacAudioTools::window(rightWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT *  3), AAC_XFORM_HALFWIN_SIZE_SHORT);
+    AacAudioTools::window(leftWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT *  4), AAC_XFORM_HALFWIN_SIZE_SHORT);  // 2
+    AacAudioTools::window(rightWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT *  5), AAC_XFORM_HALFWIN_SIZE_SHORT);
+    AacAudioTools::window(leftWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT *  6), AAC_XFORM_HALFWIN_SIZE_SHORT);  // 3
+    AacAudioTools::window(rightWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT *  7), AAC_XFORM_HALFWIN_SIZE_SHORT);
+    AacAudioTools::window(leftWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT *  8), AAC_XFORM_HALFWIN_SIZE_SHORT);  // 4
+    AacAudioTools::window(rightWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT *  9), AAC_XFORM_HALFWIN_SIZE_SHORT);
+    AacAudioTools::window(leftWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT * 10), AAC_XFORM_HALFWIN_SIZE_SHORT);  // 5
+    AacAudioTools::window(rightWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT * 11), AAC_XFORM_HALFWIN_SIZE_SHORT);
+    AacAudioTools::window(leftWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT * 12), AAC_XFORM_HALFWIN_SIZE_SHORT);  // 6
+    AacAudioTools::window(rightWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT * 13), AAC_XFORM_HALFWIN_SIZE_SHORT);
+    AacAudioTools::window(leftWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT * 14), AAC_XFORM_HALFWIN_SIZE_SHORT);  // 7
+    AacAudioTools::window(rightWindow, samples + (AAC_XFORM_HALFWIN_SIZE_SHORT * 15), AAC_XFORM_HALFWIN_SIZE_SHORT);
 
     // Internal overlap of short windows
     double input[AAC_XFORM_WIN_SIZE_LONG];
@@ -665,11 +682,14 @@ bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info
 
     for (unsigned int s = 0; s < 448; s++)
       samples[s + 1600] = 0.0;
+
   }
 
+  // TODO: Some window shapes leave samples[] with large regions of zeroes.
+  // We could maybe take advantage of this when summing samples.
+
   // Overlapping with previous samples (§ 15.3.3)
-  static double oldSamples[1024] = {};  // TODO: Constant for length, move to member variable
-  for (unsigned int s = 0; s < 1024; s++)
+  for (unsigned int s = 0; s < 1024; s++)  // TODO: Constant
   {
     auto tmp = samples[s];
     samples[s] += oldSamples[s];
@@ -677,12 +697,12 @@ bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info
   }
 
   // Save second half of previous samples for next time
-  for (unsigned int s = 0; s < 1024; s++)
+  for (unsigned int s = 0; s < 1024; s++)  // TODO: Constant
     oldSamples[s] = samples[s + 1024];
 
   // Convert to int16
   int16_t final[1024];  // TODO: Constant for length
-  for (unsigned int s = 0; s < 1024; s++)
+  for (unsigned int s = 0; s < 1024; s++)  // TODO: Constant
   {
     if (samples[s] > 0)
       final[s] = static_cast<int16_t>(samples[s] + 0.5);
