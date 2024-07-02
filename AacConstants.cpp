@@ -117,6 +117,10 @@ namespace AacConstants
     {&sfb_short_8000,              &sfb_long_8000},               // 8000
   };
 
+  // Table 33
+  static const unsigned int tnsLongWindowMaxBands[]  = {31, 31, 34, 40, 42, 51, 46, 46, 42, 42, 42, 39};
+  static const unsigned int tnsShortWindowMaxBands[] = { 9,  9, 10, 14, 14, 14, 14, 14, 14, 14, 14, 14};
+
   // Table 35
   static const unsigned int sampleRateMap[] =
   {
@@ -212,6 +216,22 @@ namespace AacConstants
       return NULL;  // Out of range
 
     return &scalefactorBandMap[index];
+  }
+
+  unsigned int getLongWindowTnsMaxBandByIndex(AacSampleRateIndex index)
+  {
+    if (index >= std::size(sampleRateMap))
+      return 0;  // Out of range
+
+    return tnsLongWindowMaxBands[index];
+  }
+
+  unsigned int getShortWindowTnsMaxBandByIndex(AacSampleRateIndex index)
+  {
+    if (index >= std::size(sampleRateMap))
+      return 0;  // Out of range
+
+    return tnsShortWindowMaxBands[index];
   }
 
   const char *getWindowSequenceName(AacWindowSequence sequence)

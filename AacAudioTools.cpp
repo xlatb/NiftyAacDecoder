@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <assert.h>
 #include <math.h>
 
 #include "AacConstants.h"
@@ -76,4 +77,75 @@ namespace AacAudioTools
     for (unsigned int s = 0; s < count; s++)
       samples[s] *= window[s];
   }
+
+  void tnsFilterUpwards(double *coefficients, unsigned int sampleCount, unsigned int order, const double lpc[])
+  {
+    assert(order > 0);
+    assert(order < AAC_MAX_TNS_ORDER_LONG_MAIN);
+
+    // ISO 13818-7 is pretty terse about this process. It says:
+    // - Simple all-pole filter of order “order” defined by
+    //   y(n) = x(n) - lpc[1]*y(n-1) - ... - lpc[order]*y(n-order)
+    // - The output data is written over the input data (“in-place operation”)
+    //
+    // My understanding is:
+    // 1. x() is the input samples and y() is the output samples.
+    // 2. The "order" is the number of filter components. Each one has an
+    //  associated coefficient (here stored in lpc[1] through lpc[order]).
+    // 3. The term "all-pole" means this is purely a feedback filter. There
+    //  are no feedforward components.
+    // 4. The presence of feedback components means the filter is an IIR
+    //  (infinite impulse response) filter.
+    // 5. lpc[0] is always 1.0 so we can skip that multiplication.
+    // 6. We could rewrite the above as a summation:
+    //                order
+    //  y(n) = x(n) -   Σ   lpc[i] * y(n - i)
+    //                i = 1
+
+    for (unsigned int n = 0; n < sampleCount; n++)
+    {
+      double y = coefficients[n];
+      printf("TNS: starting sample: n %d  y %f\n", n, y);
+
+      for (unsigned int i = 1; (i <= order) && (i < n); i++)
+      {
+        printf("  prior sample: i %d  n %d  lpc[%d] %f  sample[%d] %f  product %f\n", i, n - i, i, lpc[i], n - i, coefficients[n - i], lpc[i] * coefficients[n - i]);
+        y -= lpc[i] * coefficients[n - i];
+      }
+
+      printf("  final y %f\n", y);
+
+      coefficients[n] = y;
+    }
+  }
+
+  void tnsFilterDownwards(double *coefficients, unsigned int sampleCount, unsigned int order, const double lpc[])
+  {
+    assert(order > 0);
+    assert(order < AAC_MAX_TNS_ORDER_LONG_MAIN);
+
+    // See comments at tnsFilterUpwards(). This version just runs through the
+    //  samples from high to low.
+    // We use '(coefficients - n)[0]' below rather than 'coefficients[-n]' so
+    //  that n can remain unsigned.
+
+    for (unsigned int n = 0; n < sampleCount; n++)
+    {
+      double y = (coefficients - n)[0];
+      printf("TNS: starting sample: n %d  y %f\n", n, y);
+
+      for (unsigned int i = 1; (i <= order) && (i < n); i++)
+      {
+        printf("  prior sample: i %d  n %d  lpc[%d] %f  sample[%d] %f  product %f\n", i, n + i, i, lpc[i], n + i, (coefficients - n + i)[0], lpc[i] * (coefficients - n + i)[0]);
+        y -= lpc[i] * (coefficients - n + i)[0];
+      }
+
+      printf("  final y %f\n", y);
+
+      (coefficients - n)[0] = y;
+    }
+
+  }
+
 };
+

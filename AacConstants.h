@@ -3,6 +3,29 @@
 #ifndef AAC_CONSTANTS_H
 #define AAC_CONSTANTS_H
 
+#define AAC_MAX_SFB_COUNT     51
+
+#define AAC_MAX_WINDOW_COUNT  8
+
+#define AAC_MAX_WINDOW_GROUPS 8
+
+#define AAC_MAX_PULSE_COUNT   4
+
+#define AAC_MAX_TNS_ORDER_LONG_MAIN 20  // Long window, main profile
+#define AAC_MAX_TNS_ORDER_LONG_LC   12  // Long window, low-complexity profile
+#define AAC_MAX_TNS_ORDER_SHORT     7   // Short window, any profile
+
+#define AAC_MAX_TNS_FILTER_COUNT    3
+
+enum AacExtensionType
+{
+  AAC_EXT_FILL          = 0x0,  // Bitstream filler
+  AAC_EXT_FILL_DATA     = 0x1,  // Bitstream data as filler
+  AAC_EXT_DYNAMIC_RANGE = 0xB,  // Dynamic range control
+  AAC_EXT_SBR_DATA      = 0xD,  // SBR enhancement
+  AAC_EXT_SBR_DATA_CRC  = 0xE,  // SBR enhancement with CRC
+};
+
 enum AacSampleRateIndex : unsigned int
 {
   AAC_SAMPLE_RATE_96000 = 0,
@@ -80,6 +103,9 @@ namespace AacConstants
   extern AacSampleRateIndex getIndexBySampleRate(unsigned int sampleRate);
 
   extern const AacScalefactorBandInfo *getScalefactorBandInfo(AacSampleRateIndex index);
+
+  extern unsigned int getLongWindowTnsMaxBandByIndex(AacSampleRateIndex index);
+  extern unsigned int getShortWindowTnsMaxBandByIndex(AacSampleRateIndex index);
 
   extern const char *getWindowSequenceName(AacWindowSequence sequence);
 

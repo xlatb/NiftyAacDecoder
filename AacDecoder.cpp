@@ -13,20 +13,6 @@
 
 #include "AacDecoder.h"
 
-#define AAC_MAX_SFB_COUNT     51
-
-#define AAC_MAX_WINDOW_COUNT  8
-
-#define AAC_MAX_WINDOW_GROUPS 8
-
-#define AAC_MAX_PULSE_COUNT   4
-
-#define AAC_MAX_TNS_ORDER_LONG_MAIN 20  // Long window, main profile
-#define AAC_MAX_TNS_ORDER_LONG_LC   12  // Long window, low-complexity profile
-#define AAC_MAX_TNS_ORDER_SHORT     7   // Short window, any profile
-
-#define AAC_MAX_TNS_FILTER_COUNT    3
-
 enum AacElementId
 {
   AAC_ID_SCE = 0x0,  // Single channel element
@@ -39,15 +25,8 @@ enum AacElementId
   AAC_ID_END = 0x7,  // End of data block
 };
 
-enum AacExtensionType
-{
-  AAC_EXT_FILL          = 0x0,  // Bitstream filler
-  AAC_EXT_FILL_DATA     = 0x1,  // Bitstream data as filler
-  AAC_EXT_DYNAMIC_RANGE = 0xB,  // Dynamic range control
-  AAC_EXT_SBR_DATA      = 0xD,  // SBR enhancement
-  AAC_EXT_SBR_DATA_CRC  = 0xE,  // SBR enhancement with CRC
-};
-
+// TODO: We probably don't need 'compress' after the initial decode. We could
+//  just use a bool.
 enum
 {
   AAC_TNS_FILTER_FLAG_DOWNWARD = 0x01,
@@ -97,7 +76,13 @@ struct AacTnsInfo
   uint8_t filterCount[AAC_MAX_WINDOW_COUNT];  // For each window, the number of filters [0..3]
   uint8_t coefficientBits[AAC_MAX_WINDOW_COUNT];  // [3..4]
 
-  struct { uint8_t length; uint8_t order; uint8_t flags; uint8_t coefficients[AAC_MAX_TNS_ORDER_LONG_MAIN]; } filters[AAC_MAX_WINDOW_COUNT][AAC_MAX_TNS_FILTER_COUNT];  // For each window, for each filter, the filter info
+  struct AacTnsFilter
+  {
+    uint8_t sfbCount;
+    uint8_t order;
+    uint8_t flags;
+    int8_t coefficients[AAC_MAX_TNS_ORDER_LONG_MAIN];
+  } filters[AAC_MAX_WINDOW_COUNT][AAC_MAX_TNS_FILTER_COUNT];  // For each window, for each filter, the filter info;
 };
 
 struct AacDecodeInfo
@@ -279,9 +264,11 @@ bool AacDecoder::decodeScalefactorInfo(AacBitReader *reader, AacDecodeInfo *info
     {
       unsigned int hcb = info->section->sfbCodebooks[g][sfb];
       if (hcb == AAC_HCB_ZERO)
+      {
+        info->sf->scalefactors[g][sfb] = 0;
         continue;  // Not an active band
-
-      if ((hcb == AAC_HCB_INTENSITY) || (hcb == AAC_HCB_INTENSITY2))
+      }
+      else if ((hcb == AAC_HCB_INTENSITY) || (hcb == AAC_HCB_INTENSITY2))
       {
         info->sf->scalefactors[g][sfb] = 0;
         abort();  // TODO: Don't we have to read dpcm_is_position[] here?
@@ -346,7 +333,6 @@ bool AacDecoder::decodeTnsInfo(AacBitReader *reader, AacDecodeInfo *info)
     return true;
   }
 
-  printf("Frame %d TNS enabled\n", m_blockCount);
   info->tns.isEnabled = true;
 
   // § 14.2.1
@@ -369,6 +355,7 @@ bool AacDecoder::decodeTnsInfo(AacBitReader *reader, AacDecodeInfo *info)
     maxOrder = AAC_MAX_TNS_ORDER_LONG_LC;
   }
 
+  // § 14.3
   for (unsigned int w = 0; w < info->section->windowCount; w++)
   {
     unsigned int filterCount = reader->readUInt(filterCountBits);
@@ -385,9 +372,9 @@ bool AacDecoder::decodeTnsInfo(AacBitReader *reader, AacDecodeInfo *info)
       if (order > maxOrder)
         return false;  // Order too high
 
-      info->tns.filters[w][f].length = length;
-      info->tns.filters[w][f].order  = order;
-      info->tns.filters[w][f].flags  = 0;
+      info->tns.filters[w][f].sfbCount = length;
+      info->tns.filters[w][f].order    = order;
+      info->tns.filters[w][f].flags    = 0;
 
       if (order)
       {
@@ -397,13 +384,33 @@ bool AacDecoder::decodeTnsInfo(AacBitReader *reader, AacDecodeInfo *info)
         if (reader->readUInt(1))
           info->tns.filters[w][f].flags |= AAC_TNS_FILTER_FLAG_COMPRESS;
 
+        unsigned readBits = info->tns.coefficientBits[w] - ((info->tns.filters[w][f].flags & AAC_TNS_FILTER_FLAG_COMPRESS) ? 1 : 0);
+
         for (unsigned int o = 0; o < order; o++)
         {
-          unsigned coefficientBits = info->tns.coefficientBits[w] - ((info->tns.filters[w][f].flags & AAC_TNS_FILTER_FLAG_COMPRESS) ? 1 : 0);
-          info->tns.filters[w][f].coefficients[o] = reader->readUInt(coefficientBits);
-          // TODO: Coefficient decoding per § 14.3
+          int8_t coefficient = reader->readUInt(readBits);
+          //printf("TNS coefficient %d readbits %d\n", (int) coefficient, readBits);
+
+          if (coefficient & (1 << (readBits - 1)))
+            coefficient = (int8_t) (((uint8_t) coefficient) | ~((1U << readBits) - 1));  // Sign extend
+
+          info->tns.filters[w][f].coefficients[o] = coefficient;
         }
       }
+    }
+  }
+
+  printf("TNS enabled:\n");
+  for (unsigned int w = 0; w < info->section->windowCount; w++)
+  {
+    printf("  window %d: %d filters\n", w, info->tns.filterCount[w]);
+    for (unsigned int f = 0; f < info->tns.filterCount[w]; f++)
+    {
+      auto filter = info->tns.filters[w][f];
+      printf("    sfbCount %2d  order %2d  flags 0x%X  coefficients ", filter.sfbCount, filter.order, filter.flags);
+      for (unsigned int o = 0; o < filter.order; o++)
+        printf("%2d  ", filter.coefficients[o]);
+      printf("\n");
     }
   }
 
@@ -543,6 +550,89 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info, i
   return true;
 }
 
+bool AacDecoder::transformTnsCoefficients(const int8_t quant[], double lpc[], unsigned int bitCount, unsigned int order)
+{
+  double dequant[AAC_MAX_TNS_ORDER_LONG_MAIN + 1];  // Dequantized TNS coefficients
+  double b[AAC_MAX_TNS_ORDER_LONG_MAIN + 1];
+
+  // Inverse quantization
+  double iqfac   = ((1 << (bitCount - 1)) - 0.5) / (M_PI / 2.0);
+  double iqfac_m = ((1 << (bitCount - 1)) + 0.5) / (M_PI / 2.0);
+  for (unsigned int o = 0; o < order; o++)
+  {
+    dequant[o] = sin(quant[o] / ((quant[o] >= 0) ? iqfac : iqfac_m));
+    printf("  TNS: coef[%d] %d  dequant %f\n", o, quant[o], dequant[o]);
+  }
+
+  // Conversion to LPC
+  // The standard is not very forthcoming about what is happening here. It
+  //  only provides pseudocode for this transformation.
+  lpc[0] = 1.0;
+  for (unsigned int o = 1; o <= order; o++)
+  {
+    for (unsigned int i = 1; i < o; i++)
+      b[i] = lpc[i] + (dequant[o - 1] * lpc[o - i]);
+
+    for (unsigned int i = 1; i < o; i++)
+      lpc[i] = b[i];
+
+    lpc[o] = dequant[o - 1];
+  }
+
+  // NOTE: We end up with 1 more LPC coefficient than our 'order'
+  for (unsigned int o = 0; o <= order; o++)
+   printf("  TNS: lpc[%d] %f\n", o, lpc[o]);
+
+  // All done
+  return true;
+}
+
+bool AacDecoder::applyTnsLongWindow(double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_LONG], AacDecodeInfo *info)
+{
+  printf("TNS for long window...\n");
+
+  unsigned int w = 0;  // TODO
+
+  // NOTE: We start counting the filter's bands from here, even if this
+  //  block's sfbCount was lower.
+  unsigned int sfbEnd = m_scalefactorBandInfo->longWindow->swbCount;
+
+  for (unsigned int f = 0; f < info->tns.filterCount[w]; f++)
+  {
+    const auto &filter = info->tns.filters[w][f];
+
+    unsigned int tnsMaxBand = AacConstants::getLongWindowTnsMaxBandByIndex(m_sampleRateIndex);
+
+    unsigned int sfbStart = (filter.sfbCount > sfbEnd) ? 0 : sfbEnd - filter.sfbCount;
+
+    unsigned int sampleStart = m_scalefactorBandInfo->longWindow->offsets[std::min(tnsMaxBand, std::min(sfbStart, info->ics->sfbCount))];
+    unsigned int sampleEnd   = m_scalefactorBandInfo->longWindow->offsets[std::min(tnsMaxBand, std::min(sfbEnd, info->ics->sfbCount))];
+    unsigned int sampleCount = sampleEnd - sampleStart;
+
+    printf("  filter %d  flags 0x%X  sfbStart %d  sfbEnd %d  tnsMaxBand %d  sampleStart %d  sampleEnd %d  sampleCount %d\n", f, filter.flags, sfbStart, sfbEnd, tnsMaxBand, sampleStart, sampleEnd, sampleCount);
+
+    if (sampleCount == 0)
+      continue;  // No work to do
+
+    double lpc[AAC_MAX_TNS_ORDER_LONG_MAIN + 1];  // "Linear prediction coding" coefficients
+    transformTnsCoefficients(filter.coefficients, lpc, info->tns.coefficientBits[w], filter.order);
+
+    if (filter.flags & AAC_TNS_FILTER_FLAG_DOWNWARD)
+      AacAudioTools::tnsFilterDownwards(coefficients + sampleEnd - 1, sampleCount, filter.order, lpc);
+    else
+      AacAudioTools::tnsFilterUpwards(coefficients + sampleStart, sampleCount, filter.order, lpc);
+
+    sfbEnd = sfbStart;
+  }
+
+  return true;
+}
+
+bool AacDecoder::applyTnsShortWindow(double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_SHORT], AacDecodeInfo *info)
+{
+  abort();  // TODO
+}
+
 bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info, AacAudioBlock *audio)
 {
   int16_t quant[AAC_SPECTRAL_SAMPLE_SIZE_LONG] = {};  // Quantized spectal values
@@ -562,6 +652,10 @@ bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info
 
     for (unsigned int sfb = 0; sfb < info->ics->sfbCount; sfb++)
     {
+      unsigned int hcb = info->section->sfbCodebooks[g][sfb];
+      if ((hcb == AAC_HCB_ZERO) || (hcb == AAC_HCB_INTENSITY) || (hcb == AAC_HCB_INTENSITY2))
+        continue;  // No scalefactor for this band
+
       unsigned int sfbSampleStart, sfbSampleCount;
       if (info->ics->windowSequence != AAC_WINSEQ_8_SHORT)
       {
@@ -593,6 +687,21 @@ bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info
           printf("    x_rescal[%d] = %f  group %d  sfb %d  dequant %f  gain %f\n", sampleBase + k, x_rescal[sampleBase + k], g, sfb, dequant[sampleBase + k], gain);
         }
       }
+    }
+  }
+
+  // TNS
+  if (info->tns.isEnabled)
+  {
+    if (info->ics->windowSequence != AAC_WINSEQ_8_SHORT)
+    {
+      if (!applyTnsLongWindow(x_rescal, info))
+        return false;
+    }
+    else
+    {
+      if (!applyTnsShortWindow(x_rescal, info))
+        return false;
     }
   }
 
@@ -704,9 +813,19 @@ bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info
   for (unsigned int s = 0; s < 1024; s++)  // TODO: Constant
   {
     if (samples[s] > 0)
-      final[s] = static_cast<int16_t>(samples[s] + 0.5);
+    {
+      if (samples[s] > INT16_MAX)
+        final[s] = INT16_MAX;
+      else
+        final[s] = static_cast<int16_t>(samples[s] + 0.5);
+    }
     else
-      final[s] = static_cast<int16_t>(samples[s] - 0.5);
+    {
+      if (samples[s] < INT16_MIN)
+        final[s] = INT16_MIN;
+      else
+        final[s] = static_cast<int16_t>(samples[s] - 0.5);
+    }
   }
 
   // Write the first 1024 samples to the audio buffer
@@ -721,6 +840,7 @@ bool AacDecoder::decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info
   return true;
 }
 
+// TODO
 //bool AacDecoder::decodeAudioShortWindow(AacBitReader *reader, AacDecodeInfo *info, AacAudioBlock *audio)
 //{
 //  int16_t quant[AAC_SPECTRAL_SAMPLE_SIZE_LONG] = {};  // Quantized spectal values
@@ -803,8 +923,8 @@ bool AacDecoder::decodeElementSCE(AacBitReader *reader, AacAudioBlock *audio)
   info.globalGain = reader->readUInt(8);
 
   printf("-- SCE --\n");
-  printf("identifier       : %d\n", info.identifier);
-  printf("global gain      : %d\n", info.globalGain);
+  printf("identifier        : %d\n", info.identifier);
+  printf("global gain       : %d\n", info.globalGain);
 
   if (!decodeIcsInfo(reader, &ics))
     return false;
@@ -817,7 +937,7 @@ bool AacDecoder::decodeElementSCE(AacBitReader *reader, AacAudioBlock *audio)
   if (!decodeSectionInfo(reader, &ics, &section))
     return false;
 
-  printf("Window count     : %d\n", section.windowCount);
+  printf("window count     : %d\n", section.windowCount);
 
   if (!decodeScalefactorInfo(reader, &info))
     return false;
@@ -825,8 +945,12 @@ bool AacDecoder::decodeElementSCE(AacBitReader *reader, AacAudioBlock *audio)
   if (!decodePulseInfo(reader, &info))
     return false;
 
+  printf("pulse count      : %d\n", info.pulse.pulseCount);
+
   if (!decodeTnsInfo(reader, &info))
     return false;
+
+  printf("TNS enabled      : %s\n", info.tns.isEnabled ? "true" : "false");
 
   bool hasGainControl = reader->readUInt(1);
   if (hasGainControl)

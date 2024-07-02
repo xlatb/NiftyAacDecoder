@@ -10,6 +10,7 @@ class AacAudioBlock;
 
 struct AacIcsInfo;
 struct AacSectionInfo;
+struct AacTnsFilter;
 struct AacDecodeInfo;
 
 class AacDecoder
@@ -28,7 +29,12 @@ class AacDecoder
   bool decodeScalefactorInfo(AacBitReader *reader, AacDecodeInfo *info);
   bool decodePulseInfo(AacBitReader *reader, AacDecodeInfo *info);
   bool decodeTnsInfo(AacBitReader *reader, AacDecodeInfo *info);
+
   bool decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info, int16_t quant[]);
+
+  bool transformTnsCoefficients(const int8_t quant[], double lpc[], unsigned int bitCount, unsigned int order);
+  bool applyTnsLongWindow(double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_LONG], AacDecodeInfo *info);
+  bool applyTnsShortWindow(double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_SHORT], AacDecodeInfo *info);
 
   bool decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info, AacAudioBlock *audio);
   bool decodeAudioShortWindow(AacBitReader *reader, AacDecodeInfo *info, AacAudioBlock *audio);
