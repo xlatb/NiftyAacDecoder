@@ -78,6 +78,40 @@ namespace AacAudioTools
       samples[s] *= window[s];
   }
 
+  void transformTnsCoefficients(const int8_t quant[], double lpc[], unsigned int bitCount, unsigned int order)
+  {
+    double dequant[AAC_MAX_TNS_ORDER_LONG_MAIN + 1];  // Dequantized TNS coefficients
+    double b[AAC_MAX_TNS_ORDER_LONG_MAIN + 1];
+
+    // Inverse quantization
+    double iqfac   = ((1 << (bitCount - 1)) - 0.5) / (M_PI / 2.0);
+    double iqfac_m = ((1 << (bitCount - 1)) + 0.5) / (M_PI / 2.0);
+    for (unsigned int o = 0; o < order; o++)
+    {
+      dequant[o] = sin(quant[o] / ((quant[o] >= 0) ? iqfac : iqfac_m));
+      printf("  TNS: coef[%d] %d  dequant %f\n", o, quant[o], dequant[o]);
+    }
+
+    // Conversion to LPC
+    // The standard is not very forthcoming about what is happening here. It
+    //  only provides pseudocode for this transformation.
+    lpc[0] = 1.0;
+    for (unsigned int o = 1; o <= order; o++)
+    {
+      for (unsigned int i = 1; i < o; i++)
+        b[i] = lpc[i] + (dequant[o - 1] * lpc[o - i]);
+
+      for (unsigned int i = 1; i < o; i++)
+        lpc[i] = b[i];
+
+      lpc[o] = dequant[o - 1];
+    }
+
+    // NOTE: We end up with 1 more LPC coefficient than our 'order'
+    for (unsigned int o = 0; o <= order; o++)
+     printf("  TNS: lpc[%d] %f\n", o, lpc[o]);
+  }
+
   void tnsFilterUpwards(double *coefficients, unsigned int sampleCount, unsigned int order, const double lpc[])
   {
     assert(order > 0);

@@ -13,6 +13,7 @@ namespace AacAudioTools
 
   extern void window(const double window[], double samples[], unsigned int count);
 
+  extern void transformTnsCoefficients(const int8_t quant[], double lpc[], unsigned int bitCount, unsigned int order);
   extern void tnsFilterUpwards(double *coefficients, unsigned int sampleCount, unsigned int order, const double lpc[]);
   extern void tnsFilterDownwards(double *coefficients, unsigned int sampleCount, unsigned int order, const double lpc[]);
 };

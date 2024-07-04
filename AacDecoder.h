@@ -22,7 +22,7 @@ class AacDecoder
   unsigned int       m_sampleRate;
   AacSampleRateIndex m_sampleRateIndex;
 
-  const AacScalefactorBandInfo *m_scalefactorBandInfo;
+  const AacScalefactorBandInfo *m_scalefactorBandInfo;  // TODO: Remove?
 
   unsigned int m_blockCount;
 
