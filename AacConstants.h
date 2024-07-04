@@ -71,6 +71,15 @@ enum AacWindowShape
   AAC_WINSHAPE_COUNT = 2
 };
 
+// MS (Main/Side) mask types
+enum AacMsMaskType
+{
+  AAC_MS_MASK_ZERO     = 0x0,  // All zeroes
+  AAC_MS_MASK_SUBBAND  = 0x1,  // Per-subband mask
+  AAC_MS_MASK_ONE      = 0x2,  // All ones
+  AAC_MS_MASK_RESERVED = 0x3,  // Reserved value
+};
+
 // Spectral samples per window
 constexpr unsigned int AAC_SPECTRAL_SAMPLE_SIZE_LONG  = 1024;
 constexpr unsigned int AAC_SPECTRAL_SAMPLE_SIZE_SHORT = 128;
@@ -80,6 +89,9 @@ constexpr unsigned int AAC_XFORM_WIN_SIZE_LONG      = 2048;
 constexpr unsigned int AAC_XFORM_WIN_SIZE_SHORT     = 256;
 constexpr unsigned int AAC_XFORM_HALFWIN_SIZE_LONG  = 1024;
 constexpr unsigned int AAC_XFORM_HALFWIN_SIZE_SHORT = 128;
+
+// Audio samples output per block
+constexpr unsigned int AAC_AUDIO_SAMPLE_OUTPUT_COUNT = 1024;
 
 // NOTE: We add one extra element to the end of offsets[] with the total
 //  transform length (1024 for long windows and 128 for short windows).
