@@ -254,7 +254,7 @@ bool AacDecoder::decodeScalefactorInfo(AacBitReader *reader, AacDecodeInfo *info
       if (!sfd.decode(&offset))
         return false;  // Huffman decode failure
 
-      if ((hcb == AAC_HCB_INTENSITY) || (hcb == AAC_HCB_INTENSITY2))
+      if (AAC_IS_INTENSITY_CODEBOOK(hcb))
       {
         // Intensity stereo position info
 
@@ -411,7 +411,7 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info, d
 
   printf("decodeSpectralData():  windowSequence %s  sfbCount %d\n", AacConstants::getWindowSequenceName(info->ics->windowSequence), info->ics->sfbCount);
 
-  int16_t quant[AAC_SPECTRAL_SAMPLE_SIZE_LONG];  // Quantized spectal values
+  int16_t quant[AAC_SPECTRAL_SAMPLE_SIZE_LONG] = {};  // Quantized spectal values  // TODO: Don't pre-zero. We can zero as we go.
   for (unsigned int g = 0; g < info->ics->windowGroupCount; g++)  // Groups
   {
     printf("- group %d has %d sections\n", g, info->section.windowGroupSections[g].count);
@@ -546,7 +546,7 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info, d
     for (unsigned int sfb = 0; sfb < info->ics->sfbCount; sfb++)
     {
       unsigned int hcb = info->section.sfbCodebooks[g][sfb];
-      if ((hcb == AAC_HCB_ZERO) || (hcb == AAC_HCB_INTENSITY) || (hcb == AAC_HCB_INTENSITY2))
+      if ((hcb == AAC_HCB_ZERO) || AAC_IS_INTENSITY_CODEBOOK(hcb))
         continue;  // No scalefactor for this band
 
       unsigned int sfbSampleStart, sfbSampleCount;
@@ -620,6 +620,64 @@ void AacDecoder::getCpeChannelDecoders(uint8_t instance, AacChannelDecoder *deco
   decoders[0] = left;
   decoders[1] = right;
   return;
+}
+
+// § 12.1.3 M/S (Main/Side) joint stereo
+// In this scheme, the first channel ("left") contains the main audio, and
+//  the second channel ("right") contains the delta between the channels.
+bool AacDecoder::applyMsJointStereo(const AacDecodeInfo *info, const AacMsMaskInfo *msMask, double leftSpec[AAC_SPECTRAL_SAMPLE_SIZE_LONG], double rightSpec[AAC_SPECTRAL_SAMPLE_SIZE_LONG])
+{
+  if (msMask->type == AAC_MS_MASK_ZERO)
+    return true;  // Nothing to do
+  else if (msMask->type == AAC_MS_MASK_RESERVED)
+    return false;  // Invalid mask type
+
+  for (unsigned int g = 0; g < info->ics->windowGroupCount; g++)
+  {
+    unsigned int winCount = info->ics->windowGroups[g].winLength;  // Count of windows within group
+
+    for (unsigned int winOffset = 0; winOffset < winCount; winOffset++)  // Window offset within group
+    {
+      for (unsigned int sfb = 0; sfb < info->ics->sfbCount; sfb++)  // Each SFB
+      {
+        auto hcb = info->section.sfbCodebooks[g][sfb];
+        if (AAC_IS_INTENSITY_CODEBOOK(hcb))
+          continue;  // This SFB uses intensity joint stereo, not M/S joint stereo
+
+        if ((msMask->type == AAC_MS_MASK_SUBBAND) && !((msMask->sfbMask[sfb] >> g) & 0x01))
+          continue;  // Joint stereo not enabled for this SFB
+
+        unsigned int win = info->ics->windowGroups[g].winStart + winOffset;
+
+        unsigned int sampleStart, sampleCount;
+        if (info->ics->isLongWindow)
+        {
+          sampleStart = m_scalefactorBandInfo->longWindow->offsets[sfb];
+          sampleCount = m_scalefactorBandInfo->longWindow->offsets[sfb + 1] - sampleStart;
+        }
+        else
+        {
+          sampleStart = m_scalefactorBandInfo->shortWindow->offsets[sfb];
+          sampleCount = m_scalefactorBandInfo->shortWindow->offsets[sfb + 1] - sampleStart;
+        }
+
+        // NOTE: The win variable should always be 0 for a long window, so this should be safe.
+        sampleStart = (win * AAC_SPECTRAL_SAMPLE_SIZE_SHORT) + sampleStart;
+
+        for (unsigned int s = 0; s < sampleCount; s++)
+        {
+          double main = leftSpec[sampleStart + s];
+          double side = rightSpec[sampleStart + s];
+          double left  = main + side;
+          double right = main - side;
+          leftSpec[sampleStart + s] = left;
+          rightSpec[sampleStart + s] = right;
+        }
+      }
+    }
+  }
+
+  return true;
 }
 
 bool AacDecoder::decodeBlock(AacBitReader *reader, AacAudioBlock *audio)
@@ -711,15 +769,7 @@ bool AacDecoder::decodeElementSCE(AacBitReader *reader, AacAudioBlock *audio)
     return false;  // Not allowed in LC profile
 
   printf("-- SCE --\n");
-  printf("identifier        : %d\n", info.identifier);
-  printf("global gain       : %d\n", info.globalGain);
-  printf("window seq        : %d (%s)\n", ics.windowSequence, AacConstants::getWindowSequenceName(ics.windowSequence));
-  printf("window shape      : %d (%s)\n", ics.windowShape, AacConstants::getWindowShapeName(ics.windowShape));
-  printf("scalefactor bands : %d\n", ics.sfbCount);
-  printf("samples per window: %d\n", ics.samplesPerWindow);
-  printf("window count      : %d\n", ics.windowCount);
-  printf("pulse count       : %d\n", info.pulse.pulseCount);
-  printf("TNS enabled       : %s\n", info.tns.isEnabled ? "true" : "false");
+  dumpInfo(&info);
 
   int16_t *buf;
   audio->prepare(m_sampleRate, AAC_MONO_CHANNEL_COUNT);
@@ -742,16 +792,14 @@ bool AacDecoder::decodeElementCPE(AacBitReader *reader, AacAudioBlock *audio)
 
   AacIcsInfo ics[AAC_STEREO_CHANNEL_COUNT];
 
+  AacDecodeInfo info[AAC_STEREO_CHANNEL_COUNT];
+
   AacMsMaskInfo msMaskInfo;
 
   unsigned int identifier = reader->readUInt(4);
   getCpeChannelDecoders(identifier, channelDecoders);
 
   bool commonWindow = reader->readUInt(1);
-
-  printf("-- CPE --\n");
-  printf("identifier        : %d\n", identifier);
-  printf("commonWindow      : %s\n", commonWindow ? "true" : "false");
 
   if (commonWindow)
   {
@@ -768,46 +816,80 @@ bool AacDecoder::decodeElementCPE(AacBitReader *reader, AacAudioBlock *audio)
   audio->prepare(m_sampleRate, AAC_STEREO_CHANNEL_COUNT);
   audio->getSampleBuffer(&buf);
 
+  // Read per-channel settings
   for (unsigned int ch = 0; ch < AAC_STEREO_CHANNEL_COUNT; ch++)
   {
-    AacDecodeInfo info;
-    info.identifier = identifier;
-
-    info.globalGain = reader->readUInt(8);
+    info[ch].identifier = identifier;
+    info[ch].globalGain = reader->readUInt(8);
 
     if (commonWindow)
-      info.ics = &ics[0];
+      info[ch].ics = &ics[0];
     else
     {
       if (!decodeIcsInfo(reader, &ics[ch]))
         return false;
 
-      info.ics = &ics[ch];
+      info[ch].ics = &ics[ch];
     }
 
-    if (!decodeSectionInfo(reader, &info))
+    if (!decodeSectionInfo(reader, &info[ch]))
       return false;
 
-    if (!decodeScalefactorInfo(reader, &info))
+    if (!decodeScalefactorInfo(reader, &info[ch]))
       return false;
 
-    if (!decodePulseInfo(reader, &info))
+    if (!decodePulseInfo(reader, &info[ch]))
       return false;
 
-    if (!decodeTnsInfo(reader, &info))
+    if (!decodeTnsInfo(reader, &info[ch]))
       return false;
 
     bool hasGainControl = reader->readUInt(1);
     if (hasGainControl)
       return false;  // Not allowed in LC profile
 
-    if (!decodeSpectralData(reader, &info, spec[ch]))
+    if (!decodeSpectralData(reader, &info[ch], spec[ch]))
       return false;
+  }
 
-    if (!channelDecoders[ch]->decodeAudio(reader, &info, spec[ch], buf + ch, AAC_STEREO_CHANNEL_COUNT))
+  printf("commonWindow      : %s\n", commonWindow ? "true" : "false");
+
+  printf("-- CPE left --\n");
+  dumpInfo(&info[0]);
+
+  printf("-- CPE right --\n");
+  dumpInfo(&info[1]);
+
+  // Joint stereo
+  if (commonWindow)
+  {
+    // M/S (main/side) joint stereo
+    if (msMaskInfo.type != AAC_MS_MASK_ZERO)
+    {
+      if (!applyMsJointStereo(info, &msMaskInfo, spec[0], spec[1]))
+        return false;
+    }
+  }
+
+  // Decode audio
+  for (unsigned int ch = 0; ch < AAC_STEREO_CHANNEL_COUNT; ch++)
+  {
+    if (!channelDecoders[ch]->decodeAudio(reader, &info[ch], spec[ch], buf + ch, AAC_STEREO_CHANNEL_COUNT))
       return false;
   }
 
   return true;
 }
 
+void AacDecoder::dumpInfo(AacDecodeInfo *info)
+{
+  printf("identifier        : %d\n", info->identifier);
+  printf("global gain       : %d\n", info->globalGain);
+  printf("window seq        : %d (%s)\n", info->ics->windowSequence, AacConstants::getWindowSequenceName(info->ics->windowSequence));
+  printf("window shape      : %d (%s)\n", info->ics->windowShape, AacConstants::getWindowShapeName(info->ics->windowShape));
+  printf("scalefactor bands : %d\n", info->ics->sfbCount);
+  printf("samples per window: %d\n", info->ics->samplesPerWindow);
+  printf("window count      : %d\n", info->ics->windowCount);
+  printf("pulse count       : %d\n", info->pulse.pulseCount);
+  printf("TNS enabled       : %s\n", info->tns.isEnabled ? "true" : "false");
+}

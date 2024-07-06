@@ -52,6 +52,8 @@ enum
   AAC_HCB_INTENSITY  = 15,  // INTENSITY_HCB
 };
 
+#define AAC_IS_INTENSITY_CODEBOOK(hcb) (hcb >= AAC_HCB_INTENSITY2)
+
 // Table 44
 // The names feel a bit misleading. LONG_START is for transitioning to short
 //  windows, and LONG_STOP is for transitioning to long windows.

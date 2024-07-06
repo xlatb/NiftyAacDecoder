@@ -34,6 +34,7 @@ struct AacSectionInfo
 
   // TODO: I think it would be more efficient to track this per section rather
   //  than per SFB. It only varies per section.
+  // TODO: Actually, not sure. Might remove 'codebook' below inside sections[].
   uint8_t sfbCodebooks[AAC_MAX_WINDOW_GROUPS][AAC_MAX_SFB_COUNT];  // For each group, for each scalefactor band, the codebook
 
   struct

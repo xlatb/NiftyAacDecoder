@@ -44,12 +44,14 @@ class AacDecoder
   AacChannelDecoder *getSceChannelDecoder(uint8_t instance);
   void               getCpeChannelDecoders(uint8_t instance, AacChannelDecoder *decoders[2]);
 
-//  void applyMsJointStereo(const AacDecodeInfo *info, 
+  bool applyMsJointStereo(const AacDecodeInfo *info, const AacMsMaskInfo *msMask, double leftSpec[AAC_SPECTRAL_SAMPLE_SIZE_LONG], double rightSpec[AAC_SPECTRAL_SAMPLE_SIZE_LONG]);
 
 
   bool decodeElementFIL(AacBitReader *reader);
   bool decodeElementSCE(AacBitReader *reader, AacAudioBlock *audio);
   bool decodeElementCPE(AacBitReader *reader, AacAudioBlock *audio);
+
+  void dumpInfo(AacDecodeInfo *info);
 
 public:
   AacDecoder(unsigned int sampleRate);
