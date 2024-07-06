@@ -39,22 +39,17 @@ class AacDecoder
   bool decodePulseInfo(AacBitReader *reader, AacDecodeInfo *info);
   bool decodeTnsInfo(AacBitReader *reader, AacDecodeInfo *info);
 
-  bool decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info, int16_t quant[]);
-
-  bool transformTnsCoefficients(const int8_t quant[], double lpc[], unsigned int bitCount, unsigned int order);
-  bool applyTnsLongWindow(double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_LONG], AacDecodeInfo *info);
-  bool applyTnsShortWindow(double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_SHORT], AacDecodeInfo *info);
-
-  bool decodeAudioLongWindow(AacBitReader *reader, AacDecodeInfo *info, int16_t audio[AAC_AUDIO_SAMPLE_OUTPUT_COUNT]);
-  bool decodeAudioShortWindow(AacBitReader *reader, AacDecodeInfo *info, int16_t audio[AAC_AUDIO_SAMPLE_OUTPUT_COUNT]);
+  bool decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info, double spec[AAC_SPECTRAL_SAMPLE_SIZE_LONG]);
 
   AacChannelDecoder *getSceChannelDecoder(uint8_t instance);
+  void               getCpeChannelDecoders(uint8_t instance, AacChannelDecoder *decoders[2]);
+
+//  void applyMsJointStereo(const AacDecodeInfo *info, 
+
 
   bool decodeElementFIL(AacBitReader *reader);
   bool decodeElementSCE(AacBitReader *reader, AacAudioBlock *audio);
   bool decodeElementCPE(AacBitReader *reader, AacAudioBlock *audio);
-
-  
 
 public:
   AacDecoder(unsigned int sampleRate);

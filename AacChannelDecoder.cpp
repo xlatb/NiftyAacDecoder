@@ -111,69 +111,19 @@ bool AacChannelDecoder::applyTnsShortWindow(double coefficients[AAC_SPECTRAL_SAM
   return true;
 }
 
-bool AacChannelDecoder::decodeAudioLongWindow(AacBitReader *reader, const AacDecodeInfo *info, const int16_t quant[AAC_SPECTRAL_SAMPLE_SIZE_LONG], int16_t audio[AAC_AUDIO_SAMPLE_OUTPUT_COUNT])
+bool AacChannelDecoder::decodeAudioLongWindow(AacBitReader *reader, const AacDecodeInfo *info, double spec[AAC_SPECTRAL_SAMPLE_SIZE_LONG], int16_t *audio, size_t audioStride)
 {
-  // Dequantize
-  double dequant[AAC_SPECTRAL_SAMPLE_SIZE_LONG];
-  AacAudioTools::dequantize(quant, dequant);
-
-  // Rescale (§ 11.3.3)
-  double x_rescal[AAC_SPECTRAL_SAMPLE_SIZE_LONG] = {};
-  for (unsigned int g = 0; g < info->ics->windowGroupCount; g++)  // Groups
-  {
-    unsigned int winCount = info->ics->windowGroups[g].winLength;  // Count of windows within group
-
-    for (unsigned int sfb = 0; sfb < info->ics->sfbCount; sfb++)
-    {
-      unsigned int hcb = info->section.sfbCodebooks[g][sfb];
-      if ((hcb == AAC_HCB_ZERO) || (hcb == AAC_HCB_INTENSITY) || (hcb == AAC_HCB_INTENSITY2))
-        continue;  // No scalefactor for this band
-
-      unsigned int sfbSampleStart, sfbSampleCount;
-      if (info->ics->windowSequence != AAC_WINSEQ_8_SHORT)
-      {
-        // Long window
-        sfbSampleStart = m_scalefactorBandInfo->longWindow->offsets[sfb];
-        sfbSampleCount = m_scalefactorBandInfo->longWindow->offsets[sfb + 1] - sfbSampleStart;
-      }
-      else
-      {
-        // Short window
-        sfbSampleStart = m_scalefactorBandInfo->shortWindow->offsets[sfb];
-        sfbSampleCount = m_scalefactorBandInfo->shortWindow->offsets[sfb + 1] - sfbSampleStart;
-      }
-
-      double gain = pow(2, 0.25 * (info->sf.scalefactors[g][sfb] - 100));
-      //printf("  Rescale group %d  sfb %d  sfbSampleStart %d  sfbSampleCount %d  gain %f\n", g, sfb, sfbSampleStart, sfbSampleCount, gain);
-
-      for (unsigned int winOffset = 0; winOffset < winCount; winOffset++)
-      {
-        unsigned int win = info->ics->windowGroups[g].winStart + winOffset;
-
-        // NOTE: The win variable should always be 0 for a long window, so this should be safe.
-        unsigned int winSampleStart = win * AAC_SPECTRAL_SAMPLE_SIZE_SHORT;
-
-        unsigned int sampleBase = winSampleStart + sfbSampleStart;
-        for (unsigned int k = 0; k < sfbSampleCount; k++)
-        {
-          x_rescal[sampleBase + k] = dequant[sampleBase + k] * gain;
-          //printf("    x_rescal[%d] = %f  group %d  sfb %d  dequant %f  gain %f\n", sampleBase + k, x_rescal[sampleBase + k], g, sfb, dequant[sampleBase + k], gain);
-        }
-      }
-    }
-  }
-
   // TNS
   if (info->tns.isEnabled)
   {
     if (info->ics->windowSequence != AAC_WINSEQ_8_SHORT)
     {
-      if (!applyTnsLongWindow(x_rescal, info))
+      if (!applyTnsLongWindow(spec, info))
         return false;
     }
     else
     {
-      if (!applyTnsShortWindow(x_rescal, info))
+      if (!applyTnsShortWindow(spec, info))
         return false;
     }
   }
@@ -184,13 +134,13 @@ bool AacChannelDecoder::decodeAudioLongWindow(AacBitReader *reader, const AacDec
   if (info->ics->windowSequence != AAC_WINSEQ_8_SHORT)
   {
     // One long window
-    AacAudioTools::IMDCTLong(x_rescal, samples);
+    AacAudioTools::IMDCTLong(spec, samples);
   }
   else
   {
     // Eight short windows
     for (unsigned int w = 0; w < 8; w++)
-      AacAudioTools::IMDCTShort(x_rescal + (w * AAC_SPECTRAL_SAMPLE_SIZE_SHORT), samples + (w * AAC_XFORM_WIN_SIZE_SHORT));
+      AacAudioTools::IMDCTShort(spec + (w * AAC_SPECTRAL_SAMPLE_SIZE_SHORT), samples + (w * AAC_XFORM_WIN_SIZE_SHORT));
   }
 
   // Windowing (§ 15.3.2)
@@ -278,31 +228,31 @@ bool AacChannelDecoder::decodeAudioLongWindow(AacBitReader *reader, const AacDec
   }
 
   // Save second half of previous samples for next time
+  // TODO: memcpy()
   for (unsigned int s = 0; s < 1024; s++)  // TODO: Constant
     oldSamples[s] = samples[s + 1024];
 
   // Convert to int16
-  int16_t final[1024];  // TODO: Constant for length
-  for (unsigned int s = 0; s < 1024; s++)  // TODO: Constant
+  for (unsigned int s = 0; s < AAC_AUDIO_SAMPLE_OUTPUT_COUNT; s++)
   {
     if (samples[s] > 0)
     {
       if (samples[s] > INT16_MAX)
-        final[s] = INT16_MAX;
+        *audio = INT16_MAX;
       else
-        final[s] = static_cast<int16_t>(samples[s] + 0.5);
+        *audio = static_cast<int16_t>(samples[s] + 0.5);
     }
     else
     {
       if (samples[s] < INT16_MIN)
-        final[s] = INT16_MIN;
+        *audio = INT16_MIN;
       else
-        final[s] = static_cast<int16_t>(samples[s] - 0.5);
+        *audio = static_cast<int16_t>(samples[s] - 0.5);
     }
+
+    audio += audioStride;
   }
 
-  // Write the first 1024 samples to the audio buffer
-  memcpy(audio, final, sizeof(int16_t) * 1024);
 
   // Remember window shape for next block
   m_previousWindowShape = info->ics->windowShape;
@@ -312,16 +262,16 @@ bool AacChannelDecoder::decodeAudioLongWindow(AacBitReader *reader, const AacDec
   return true;
 }
 
-bool AacChannelDecoder::decodeAudioShortWindow(AacBitReader *reader, const AacDecodeInfo *info, const int16_t quant[AAC_SPECTRAL_SAMPLE_SIZE_LONG], int16_t audio[AAC_AUDIO_SAMPLE_OUTPUT_COUNT])
+bool AacChannelDecoder::decodeAudioShortWindow(AacBitReader *reader, const AacDecodeInfo *info, double spec[AAC_SPECTRAL_SAMPLE_SIZE_LONG], int16_t *audio, size_t audioStride)
 {
   // TODO
-  return decodeAudioLongWindow(reader, info, quant, audio);
+  return decodeAudioLongWindow(reader, info, spec, audio, audioStride);
 }
 
-bool AacChannelDecoder::decodeAudio(AacBitReader *reader, const AacDecodeInfo *info, const int16_t quant[AAC_SPECTRAL_SAMPLE_SIZE_LONG], int16_t audio[AAC_AUDIO_SAMPLE_OUTPUT_COUNT])
+bool AacChannelDecoder::decodeAudio(AacBitReader *reader, const AacDecodeInfo *info, double spec[AAC_SPECTRAL_SAMPLE_SIZE_LONG], int16_t *audio, size_t audioStride)
 {
   if (info->ics->isLongWindow)
-    return decodeAudioLongWindow(reader, info, quant, audio);
+    return decodeAudioLongWindow(reader, info, spec, audio, audioStride);
   else
-    return decodeAudioShortWindow(reader, info, quant, audio);
+    return decodeAudioShortWindow(reader, info, spec, audio, audioStride);
 }

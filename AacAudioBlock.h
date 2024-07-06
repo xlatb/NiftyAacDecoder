@@ -25,6 +25,7 @@ public:
 
   unsigned int   getSampleRate(void) { return m_sampleRate; };
   unsigned int   getChannelCount(void) { return m_channelCount; };
+  unsigned int   getSampleCount(void) { return m_channelCount * AAC_AUDIO_BLOCK_SAMPLE_COUNT; };
   const int16_t *getSamples(void) { return m_samples; };
 };
 

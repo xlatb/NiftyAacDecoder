@@ -32,12 +32,23 @@ struct AacSectionInfo
 {
   struct { uint16_t sampleCount; } windowGroups[AAC_MAX_WINDOW_GROUPS];
 
+  // TODO: I think it would be more efficient to track this per section rather
+  //  than per SFB. It only varies per section.
   uint8_t sfbCodebooks[AAC_MAX_WINDOW_GROUPS][AAC_MAX_SFB_COUNT];  // For each group, for each scalefactor band, the codebook
 
   struct
   {
     uint8_t count;
-    struct { uint8_t sfbStart; uint8_t sfbLength; uint16_t sampleStart; uint16_t sampleCount; } sections[AAC_MAX_SFB_COUNT];
+    struct
+    {
+      uint8_t  sfbStart;
+      uint8_t  sfbLength;  // TODO: sfbCount?
+      uint16_t sampleStart;  // TODO: intSampleStart?
+      uint16_t sampleCount;  // TODO: intSampleCount?
+      uint16_t winSampleStart;  // Post-deinterlace starting position of this section within each window
+      uint16_t winSampleCount;  // Post-deinterlace count of samples within each window
+      uint8_t  codebook;
+    } sections[AAC_MAX_SFB_COUNT];
   } windowGroupSections[AAC_MAX_WINDOW_GROUPS];  // For each group, the sections
 };
 

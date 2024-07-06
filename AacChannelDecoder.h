@@ -31,15 +31,15 @@ class AacChannelDecoder
   bool applyTnsLongWindow(double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_LONG], const AacDecodeInfo *info);
   bool applyTnsShortWindow(double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_LONG], const AacDecodeInfo *info);
 
-  bool decodeAudioLongWindow(AacBitReader *reader, const AacDecodeInfo *info, const int16_t quant[AAC_SPECTRAL_SAMPLE_SIZE_LONG],int16_t audio[AAC_AUDIO_SAMPLE_OUTPUT_COUNT]);
-  bool decodeAudioShortWindow(AacBitReader *reader, const AacDecodeInfo *info, const int16_t quant[AAC_SPECTRAL_SAMPLE_SIZE_LONG], int16_t audio[AAC_AUDIO_SAMPLE_OUTPUT_COUNT]);
+  bool decodeAudioLongWindow(AacBitReader *reader, const AacDecodeInfo *info, double spec[AAC_SPECTRAL_SAMPLE_SIZE_LONG], int16_t *audio, size_t audioStride);
+  bool decodeAudioShortWindow(AacBitReader *reader, const AacDecodeInfo *info, double spec[AAC_SPECTRAL_SAMPLE_SIZE_LONG], int16_t *audio, size_t audioStride);
 
 public:
   AacChannelDecoder(AacChannelOrdinal ordinal, AacSampleRateIndex sampleRateIndex);
 
   void reset(void);
 
-  bool decodeAudio(AacBitReader *reader, const AacDecodeInfo *info, const int16_t quant[AAC_SPECTRAL_SAMPLE_SIZE_LONG], int16_t audio[AAC_AUDIO_SAMPLE_OUTPUT_COUNT]);
+  bool decodeAudio(AacBitReader *reader, const AacDecodeInfo *info, double spec[AAC_SPECTRAL_SAMPLE_SIZE_LONG], int16_t *audio, size_t audioStride);
 };
 
 #endif

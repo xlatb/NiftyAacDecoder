@@ -119,7 +119,8 @@ int main(int argc, char *argv[])
     {
       int16_t *buf;
       auto size = audio.getSampleBuffer(&buf);
-      for (unsigned int s = 0; s < 1024; s++)
+      auto sampleCount = audio.getSampleCount();
+      for (unsigned int s = 0; s < sampleCount; s++)
       {
         uint16_t sample = htobe16(buf[s]);
         write(fd, &sample, sizeof(sample));
