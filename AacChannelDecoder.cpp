@@ -48,19 +48,22 @@ bool AacChannelDecoder::applyTnsLongWindow(double coefficients[AAC_SPECTRAL_SAMP
     unsigned int sampleEnd   = m_scalefactorBandInfo->longWindow->offsets[std::min(tnsMaxBand, std::min(sfbEnd, info->ics->sfbCount))];
     unsigned int sampleCount = sampleEnd - sampleStart;
 
-    printf("  filter %d  isDownward %s  sfbStart %d  sfbEnd %d  tnsMaxBand %d  sampleStart %d  sampleEnd %d  sampleCount %d\n", f, (filter.isDownward ? "true" : "false"), sfbStart, sfbEnd, tnsMaxBand, sampleStart, sampleEnd, sampleCount);
+    printf("  filter %d  order %d  isDownward %s  sfbStart %d  sfbEnd %d  tnsMaxBand %d  sampleStart %d  sampleEnd %d  sampleCount %d\n", f, filter.order, (filter.isDownward ? "true" : "false"), sfbStart, sfbEnd, tnsMaxBand, sampleStart, sampleEnd, sampleCount);
 
     if (sampleCount == 0)
       continue;  // No work to do
 
-    double lpc[AAC_MAX_TNS_ORDER_LONG_MAIN + 1];  // "Linear prediction coding" coefficients
-    assert(filter.order <= AAC_MAX_TNS_ORDER_LONG_MAIN);
-    AacAudioTools::transformTnsCoefficients(filter.coefficients, lpc, info->tns.coefficientBits[w], filter.order);
+    if (filter.order)
+    {
+      double lpc[AAC_MAX_TNS_ORDER_LONG_MAIN + 1];  // "Linear prediction coding" coefficients
+      assert(filter.order <= AAC_MAX_TNS_ORDER_LONG_MAIN);
+      AacAudioTools::transformTnsCoefficients(filter.coefficients, lpc, info->tns.coefficientBits[w], filter.order);
 
-    if (filter.isDownward)
-      AacAudioTools::tnsFilterDownwards(coefficients + sampleEnd - 1, sampleCount, filter.order, lpc);
-    else
-      AacAudioTools::tnsFilterUpwards(coefficients + sampleStart, sampleCount, filter.order, lpc);
+      if (filter.isDownward)
+        AacAudioTools::tnsFilterDownwards(coefficients + sampleEnd - 1, sampleCount, filter.order, lpc);
+      else
+        AacAudioTools::tnsFilterUpwards(coefficients + sampleStart, sampleCount, filter.order, lpc);
+    }
 
     sfbEnd = sfbStart;
   }
@@ -90,19 +93,22 @@ bool AacChannelDecoder::applyTnsShortWindow(double coefficients[AAC_SPECTRAL_SAM
       unsigned int sampleEnd   = m_scalefactorBandInfo->shortWindow->offsets[std::min(tnsMaxBand, std::min(sfbEnd, info->ics->sfbCount))];
       unsigned int sampleCount = sampleEnd - sampleStart;
 
-      printf("  filter %d  isDownward %s  sfbStart %d  sfbEnd %d  tnsMaxBand %d  sampleStart %d  sampleEnd %d  sampleCount %d\n", f, (filter.isDownward ? "true" : "false"), sfbStart, sfbEnd, tnsMaxBand, sampleStart, sampleEnd, sampleCount);
+      printf("  filter %d  order %d  isDownward %s  sfbStart %d  sfbEnd %d  tnsMaxBand %d  sampleStart %d  sampleEnd %d  sampleCount %d\n", f, filter.order, (filter.isDownward ? "true" : "false"), sfbStart, sfbEnd, tnsMaxBand, sampleStart, sampleEnd, sampleCount);
 
       if (sampleCount == 0)
         continue;  // No work to do
 
-      double lpc[AAC_MAX_TNS_ORDER_SHORT + 1];  // "Linear prediction coding" coefficients
-      assert(filter.order <= AAC_MAX_TNS_ORDER_SHORT);
-      AacAudioTools::transformTnsCoefficients(filter.coefficients, lpc, info->tns.coefficientBits[w], filter.order);
+      if (filter.order)
+      {
+        double lpc[AAC_MAX_TNS_ORDER_SHORT + 1];  // "Linear prediction coding" coefficients
+        assert(filter.order <= AAC_MAX_TNS_ORDER_SHORT);
+        AacAudioTools::transformTnsCoefficients(filter.coefficients, lpc, info->tns.coefficientBits[w], filter.order);
 
-      if (filter.isDownward)
-        AacAudioTools::tnsFilterDownwards(coefficients + (w * AAC_SPECTRAL_SAMPLE_SIZE_SHORT) + sampleEnd - 1, sampleCount, filter.order, lpc);
-      else
-        AacAudioTools::tnsFilterUpwards(coefficients + (w * AAC_SPECTRAL_SAMPLE_SIZE_SHORT) + sampleStart, sampleCount, filter.order, lpc);
+        if (filter.isDownward)
+          AacAudioTools::tnsFilterDownwards(coefficients + (w * AAC_SPECTRAL_SAMPLE_SIZE_SHORT) + sampleEnd - 1, sampleCount, filter.order, lpc);
+        else
+          AacAudioTools::tnsFilterUpwards(coefficients + (w * AAC_SPECTRAL_SAMPLE_SIZE_SHORT) + sampleStart, sampleCount, filter.order, lpc);
+      }
 
       sfbEnd = sfbStart;
     }

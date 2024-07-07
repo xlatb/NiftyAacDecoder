@@ -74,7 +74,7 @@ struct AacTnsInfo
   struct AacTnsFilter
   {
     uint8_t sfbCount;
-    uint8_t order;
+    uint8_t order;  // If zero, it is a placeholder and the direction/coefficients are undefined
     bool    isDownward;
     int8_t  coefficients[AAC_MAX_TNS_ORDER_LONG_MAIN];
   } filters[AAC_MAX_WINDOW_COUNT][AAC_MAX_TNS_FILTER_COUNT];  // For each window, for each filter, the filter info;
