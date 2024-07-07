@@ -219,18 +219,17 @@ bool AacChannelDecoder::decodeAudioLongWindow(AacBitReader *reader, const AacDec
   // We could maybe take advantage of this when summing samples.
 
   // Overlapping with previous samples (§ 15.3.3)
-  static double oldSamples[1024] = {};  // TODO: Constant for length, move to member variable
-  for (unsigned int s = 0; s < 1024; s++)  // TODO: Constant
+  for (unsigned int s = 0; s < AAC_XFORM_HALFWIN_SIZE_LONG; s++)
   {
     auto tmp = samples[s];
-    samples[s] += oldSamples[s];
-    printf("  overlap[%d]: transform %.3f  old %.3f  sum %.3f\n", s, tmp, oldSamples[s], samples[s]);
+    samples[s] += m_oldSamples[s];
+    printf("  overlap[%d]: transform %.3f  old %.3f  sum %.3f\n", s, tmp, m_oldSamples[s], samples[s]);
   }
 
   // Save second half of previous samples for next time
   // TODO: memcpy()
   for (unsigned int s = 0; s < 1024; s++)  // TODO: Constant
-    oldSamples[s] = samples[s + 1024];
+    m_oldSamples[s] = samples[s + 1024];
 
   // Convert to int16
   for (unsigned int s = 0; s < AAC_AUDIO_SAMPLE_OUTPUT_COUNT; s++)

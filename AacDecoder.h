@@ -45,7 +45,7 @@ class AacDecoder
   void               getCpeChannelDecoders(uint8_t instance, AacChannelDecoder *decoders[2]);
 
   bool applyMsJointStereo(const AacDecodeInfo *info, const AacMsMaskInfo *msMask, double leftSpec[AAC_SPECTRAL_SAMPLE_SIZE_LONG], double rightSpec[AAC_SPECTRAL_SAMPLE_SIZE_LONG]);
-
+  bool applyIntensityJointStereo(const AacDecodeInfo *info, const AacMsMaskInfo *msMask, const double leftSpec[AAC_SPECTRAL_SAMPLE_SIZE_LONG], double rightSpec[AAC_SPECTRAL_SAMPLE_SIZE_LONG]);
 
   bool decodeElementFIL(AacBitReader *reader);
   bool decodeElementSCE(AacBitReader *reader, AacAudioBlock *audio);

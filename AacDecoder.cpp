@@ -680,6 +680,61 @@ bool AacDecoder::applyMsJointStereo(const AacDecodeInfo *info, const AacMsMaskIn
   return true;
 }
 
+bool AacDecoder::applyIntensityJointStereo(const AacDecodeInfo *info, const AacMsMaskInfo *msMask, const double leftSpec[AAC_SPECTRAL_SAMPLE_SIZE_LONG], double rightSpec[AAC_SPECTRAL_SAMPLE_SIZE_LONG])
+{
+  printf("Intensity stereo:\n");
+  for (unsigned int g = 0; g < info->ics->windowGroupCount; g++)
+  {
+    unsigned int winCount = info->ics->windowGroups[g].winLength;  // Count of windows within group
+
+    for (unsigned int winOffset = 0; winOffset < winCount; winOffset++)  // Window offset within group
+    {
+      for (unsigned int sfb = 0; sfb < info->ics->sfbCount; sfb++)  // Each SFB
+      {
+        int polarity;
+
+        auto hcb = info->section.sfbCodebooks[g][sfb];
+        if (hcb == AAC_HCB_INTENSITY2)
+          polarity = -1;
+        else if (hcb == AAC_HCB_INTENSITY)
+          polarity = 1;
+        else
+          continue;  // Not an intensity stereo SFB
+
+        if ((msMask->type == AAC_MS_MASK_SUBBAND) && ((msMask->sfbMask[sfb] >> g) & 0x01))
+          polarity = -polarity;
+
+        int stereoPosition = info->sf.scalefactors[g][sfb] - AAC_STEREO_POSITION_BIAS;
+        double scale = pow(0.5, (0.25 * stereoPosition)) * polarity;
+
+        unsigned int win = info->ics->windowGroups[g].winStart + winOffset;
+
+        unsigned int sampleStart, sampleCount;
+        if (info->ics->isLongWindow)
+        {
+          sampleStart = m_scalefactorBandInfo->longWindow->offsets[sfb];
+          sampleCount = m_scalefactorBandInfo->longWindow->offsets[sfb + 1] - sampleStart;
+        }
+        else
+        {
+          sampleStart = m_scalefactorBandInfo->shortWindow->offsets[sfb];
+          sampleCount = m_scalefactorBandInfo->shortWindow->offsets[sfb + 1] - sampleStart;
+        }
+
+        printf("  g %d  win %d  sfb %d  stereoPosition %d  scale %f\n", g, win, sfb, stereoPosition, scale);
+
+        // NOTE: The win variable should always be 0 for a long window, so this should be safe.
+        sampleStart = (win * AAC_SPECTRAL_SAMPLE_SIZE_SHORT) + sampleStart;
+
+        for (unsigned int s = 0; s < sampleCount; s++)
+          rightSpec[sampleStart + s] = leftSpec[sampleStart + s] * scale;
+      }
+    }
+  }
+
+  return true;
+}
+
 bool AacDecoder::decodeBlock(AacBitReader *reader, AacAudioBlock *audio)
 {
   bool done = false;
@@ -866,9 +921,13 @@ bool AacDecoder::decodeElementCPE(AacBitReader *reader, AacAudioBlock *audio)
     // M/S (main/side) joint stereo
     if (msMaskInfo.type != AAC_MS_MASK_ZERO)
     {
-      if (!applyMsJointStereo(info, &msMaskInfo, spec[0], spec[1]))
+      if (!applyMsJointStereo(&info[1], &msMaskInfo, spec[0], spec[1]))
         return false;
     }
+
+    // Intensity stereo
+    if (!applyIntensityJointStereo(&info[1], &msMaskInfo, spec[0], spec[1]))
+      return false;
   }
 
   // Decode audio
