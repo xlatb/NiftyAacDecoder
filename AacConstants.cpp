@@ -175,6 +175,31 @@ namespace AacConstants
     "AAC_WINSHAPE_KBD",  // 0x1
   };
 
+  // Table 36
+  static const char *elementNamesShort[] =
+  {
+    "SCE",  // 0x0
+    "CPE",  // 0x1
+    "CCE",  // 0x2
+    "LFE",  // 0x3
+    "DSE",  // 0x4
+    "PCE",  // 0x5
+    "FIL",  // 0x6
+    "END",  // 0x7
+  };
+
+  static const char *elementNamesLong[] =
+  {
+    "Single Channel Element",         // 0x0
+    "Channel Pair Element",           // 0x1
+    "Coupling Channel Element",       // 0x2
+    "Low Frequency Effects Element",  // 0x3
+    "Data Stream Element",            // 0x4
+    "Program Config Element",         // 0x5
+    "Fill Element",                   // 0x6
+    "Element Terminator",             // 0x7
+  };
+
   unsigned int getSampleRateByIndex(AacSampleRateIndex index)
   {
     if (index >= std::size(sampleRateMap))
@@ -248,6 +273,22 @@ namespace AacConstants
       return NULL;  // Out of range
 
     return windowShapeNames[shape];
+  }
+
+  const char *getElementNameShort(AacElementId id)
+  {
+    if (id >= std::size(elementNamesShort))
+      return NULL;  // Out of range
+
+    return elementNamesShort[id];
+  }
+
+  const char *getElementNameLong(AacElementId id)
+  {
+    if (id >= std::size(elementNamesLong))
+      return NULL;  // Out of range
+
+    return elementNamesLong[id];
   }
 
 };

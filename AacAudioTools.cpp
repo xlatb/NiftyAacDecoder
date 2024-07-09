@@ -41,7 +41,7 @@ namespace AacAudioTools
       double sample = (2.0 / AAC_SPECTRAL_SAMPLE_SIZE_LONG) * sum;  // TODO: AAC_XFORM_WIN_SIZE_LONG?
       samples[s] = sample;
       //printf("  samples[%d] = %.3f  sum %.3f\n", s, sample, sum);
-      printf("  samples[%d] = %.3f\n", s, sample);
+      //printf("  samples[%d] = %.3f\n", s, sample);
     }
 
   }
@@ -64,10 +64,10 @@ namespace AacAudioTools
       }
 
       //sum /= 2.0; // TODO: TEST - check output level
-      double sample = (2.0 / AAC_SPECTRAL_SAMPLE_SIZE_SHORT) * sum;  // TODO: AAC_XFORM_WIN_SIZE_LONG?
+      double sample = (2.0 / AAC_SPECTRAL_SAMPLE_SIZE_SHORT) * sum;  // TODO: AAC_XFORM_WIN_SIZE_SHORT?
       samples[s] = sample;
       //printf("  samples[%d] = %.3f  sum %.3f\n", s, sample, sum);
-      printf("  samples[%d] = %.3f\n", s, sample);
+      //printf("  samples[%d] = %.3f\n", s, sample);
     }
 
   }

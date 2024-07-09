@@ -19,6 +19,7 @@ public:
   bool         isComplete(void) { return m_position >= m_size; };
 
   unsigned int readBit(void) { if (isComplete()) return 0; uint8_t byte = m_bytes[m_position]; unsigned int v = (byte >> m_bit) & 0x01; if (++m_bit > 7) { m_bit = 0; m_position++; }; return v; };
+  unsigned int readByte(void) { if (isComplete()) return 0; if (m_bit == 0) return m_bytes[m_position++]; else return readUInt(8); }
 
   unsigned int readUInt(unsigned int bitCount);
 

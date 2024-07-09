@@ -1,9 +1,54 @@
 #include <stdint.h>
 
+#include <string>
+
 #include "AacConstants.h"
 
 #ifndef AAC_STRUCTS_H
 #define AAC_STRUCTS_H
+
+struct AacInstanceIdentifier
+{
+  AacElementId type;
+  uint8_t      instance;
+};
+
+struct AacProgramConfigInfo
+{
+  uint8_t instance;
+  uint8_t profile;
+  uint8_t sampleRateIndex;
+
+  uint8_t frontChannelElementCount;
+  AacInstanceIdentifier frontChannelElements[AAC_PCE_MAX_FRONT_CHANNEL_ELEMENTS];
+
+  uint8_t sideChannelElementCount;
+  AacInstanceIdentifier sideChannelElements[AAC_PCE_MAX_SIDE_CHANNEL_ELEMENTS];
+
+  uint8_t rearChannelElementCount;
+  AacInstanceIdentifier rearChannelElements[AAC_PCE_MAX_REAR_CHANNEL_ELEMENTS];
+
+  uint8_t lfeChannelElementCount;
+  uint8_t lfeChannelElements[AAC_PCE_MAX_LFES];
+
+  uint8_t dseElementCount;
+  uint8_t dseElements[AAC_PCE_MAX_DSES];
+
+  uint8_t channelCouplingElementCount;
+  struct { bool isIndependentlySiwtched; uint8_t instance; } channelCouplingElements[AAC_PCE_MAX_CCES];
+
+  bool    hasMonoMixdown;
+  uint8_t monoMixdown;
+
+  bool    hasStereoMixdown;
+  uint8_t stereoMixdown;
+
+  bool    hasMatrixMixdown;
+  uint8_t matrixMixdownIndex;
+  bool    pseudoSurroundEnabled;
+
+  std::string comment;
+};
 
 struct AacIcsInfo
 {

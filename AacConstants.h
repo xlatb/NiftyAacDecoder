@@ -17,6 +17,27 @@
 
 #define AAC_MAX_TNS_FILTER_COUNT    3
 
+#define AAC_ELEMENT_INSTANCE_MAX 16
+
+#define AAC_PCE_MAX_FRONT_CHANNEL_ELEMENTS 15
+#define AAC_PCE_MAX_SIDE_CHANNEL_ELEMENTS  15
+#define AAC_PCE_MAX_REAR_CHANNEL_ELEMENTS  15
+#define AAC_PCE_MAX_LFES                   3
+#define AAC_PCE_MAX_DSES                   7
+#define AAC_PCE_MAX_CCES                   15
+
+enum AacElementId
+{
+  AAC_ID_SCE = 0x0,  // Single channel element
+  AAC_ID_CPE = 0x1,  // Channel pair element
+  AAC_ID_CCE = 0x2,  // Coupling channel element
+  AAC_ID_LFE = 0x3,  // Low frequency effect (subwoofer) element
+  AAC_ID_DSE = 0x4,  // Data stream element
+  AAC_ID_PCE = 0x5,  // Program config element
+  AAC_ID_FIL = 0x6,  // Fill element
+  AAC_ID_END = 0x7,  // End of data block
+};
+
 enum AacExtensionType
 {
   AAC_EXT_FILL          = 0x0,  // Bitstream filler
@@ -48,11 +69,14 @@ enum
   AAC_HCB_ZERO       = 0,   // ZERO_HCB
   AAC_HCB_FIRST_PAIR = 5,   // FIRST_PAIR_HCB
   AAC_HCB_ESC        = 11,  // ESC_HCB
+  AAC_HCB_RESERVED   = 12,  // Not assigned
+  AAC_HCB_NOISE      = 13,  // NOISE_HCB
   AAC_HCB_INTENSITY2 = 14,  // INTENSITY_HCB2
   AAC_HCB_INTENSITY  = 15,  // INTENSITY_HCB
 };
 
 #define AAC_IS_INTENSITY_CODEBOOK(hcb) (hcb >= AAC_HCB_INTENSITY2)
+#define AAC_IS_UNKNOWN_CODEBOOK(hcb)   (hcb == AAC_HCB_RESERVED)
 
 // Table 44
 // The names feel a bit misleading. LONG_START is for transitioning to short
@@ -124,6 +148,9 @@ namespace AacConstants
   extern const char *getWindowSequenceName(AacWindowSequence sequence);
 
   extern const char *getWindowShapeName(AacWindowShape shape);
+
+  const char *getElementNameShort(AacElementId id);
+  const char *getElementNameLong(AacElementId id);
 };
 
 #endif

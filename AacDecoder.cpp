@@ -15,18 +15,6 @@
 
 #include "AacDecoder.h"
 
-enum AacElementId
-{
-  AAC_ID_SCE = 0x0,  // Single channel element
-  AAC_ID_CPE = 0x1,  // Channel pair element
-  AAC_ID_CCE = 0x2,  // Coupling channel element
-  AAC_ID_LFE = 0x3,  // Low frequency effect (subwoofer) element
-  AAC_ID_DSE = 0x4,  // Data stream element
-  AAC_ID_PCE = 0x5,  // Program config element
-  AAC_ID_FIL = 0x6,  // Fill element
-  AAC_ID_END = 0x7,  // End of data block
-};
-
 #define AAC_MONO_CHANNEL_COUNT   1
 #define AAC_STEREO_CHANNEL_COUNT 2
 
@@ -43,6 +31,93 @@ AacDecoder::AacDecoder(unsigned int sampleRate)
   m_scalefactorBandInfo = AacConstants::getScalefactorBandInfo(m_sampleRateIndex);
 
   m_blockCount = 0;
+}
+
+// program_config_element
+bool AacDecoder::readProgramConfigInfo(AacBitReader *reader, AacProgramConfigInfo *pce)
+{
+  pce->instance        = reader->readUInt(4);
+  pce->profile         = reader->readUInt(2);
+  pce->sampleRateIndex = reader->readUInt(4);
+
+  pce->frontChannelElementCount = reader->readUInt(4);
+  assert(pce->frontChannelElementCount <= AAC_PCE_MAX_FRONT_CHANNEL_ELEMENTS);
+
+  pce->sideChannelElementCount = reader->readUInt(4);
+  assert(pce->sideChannelElementCount <= AAC_PCE_MAX_SIDE_CHANNEL_ELEMENTS);
+
+  pce->rearChannelElementCount = reader->readUInt(4);
+  assert(pce->rearChannelElementCount <= AAC_PCE_MAX_REAR_CHANNEL_ELEMENTS);
+
+  pce->lfeChannelElementCount = reader->readUInt(2);
+  assert(pce->lfeChannelElementCount <= AAC_PCE_MAX_LFES);
+
+  pce->dseElementCount = reader->readUInt(3);
+  assert(pce->dseElementCount <= AAC_PCE_MAX_DSES);
+
+  pce->channelCouplingElementCount = reader->readUInt(4);
+  assert(pce->channelCouplingElementCount <= AAC_PCE_MAX_CCES);
+
+  pce->hasMonoMixdown = reader->readUInt(1);
+  if (pce->hasMonoMixdown)
+    pce->monoMixdown = reader->readUInt(4);
+
+  pce->hasStereoMixdown = reader->readUInt(1);
+  if (pce->hasStereoMixdown)
+    pce->stereoMixdown = reader->readUInt(4);
+
+  pce->hasMatrixMixdown = reader->readUInt(1);
+  if (pce->hasMatrixMixdown)
+  {
+    pce->matrixMixdownIndex = reader->readUInt(2);
+    pce->pseudoSurroundEnabled = reader->readUInt(1);
+  }
+
+  // Identifiers for each front channel element
+  for (unsigned int i = 0; i < pce->frontChannelElementCount; i++)
+  {
+    AacElementId type = reader->readUInt(1) ? AAC_ID_CPE : AAC_ID_SCE;
+    uint8_t instance = reader->readUInt(4);
+
+    pce->frontChannelElements[i].type     = type;
+    pce->frontChannelElements[i].instance = instance;
+  }
+
+  // Identifiers for each side channel element
+  for (unsigned int i = 0; i < pce->sideChannelElementCount; i++)
+  {
+    AacElementId type = reader->readUInt(1) ? AAC_ID_CPE : AAC_ID_SCE;
+    uint8_t instance = reader->readUInt(4);
+
+    pce->sideChannelElements[i].type     = type;
+    pce->sideChannelElements[i].instance = instance;
+  }
+
+  // Identifiers for each rear channel element
+  for (unsigned int i = 0; i < pce->rearChannelElementCount; i++)
+  {
+    AacElementId type = reader->readUInt(1) ? AAC_ID_CPE : AAC_ID_SCE;
+    uint8_t instance = reader->readUInt(4);
+
+    pce->rearChannelElements[i].type     = type;
+    pce->rearChannelElements[i].instance = instance;
+  }
+
+  // Identifiers for each LFE (subwoofer) channel element
+  for (unsigned int i = 0; i < pce->lfeChannelElementCount; i++)
+    pce->lfeChannelElements[i] = reader->readUInt(4);
+
+  // Identifiers for each DSE instance
+  for (unsigned int i = 0; i < pce->lfeChannelElementCount; i++)
+    pce->lfeChannelElements[i] = reader->readUInt(4);
+
+  // Comment field
+  reader->alignToBit(0);
+  unsigned int commentLength = reader->readUInt(8);
+  for (unsigned int i = 0; i < commentLength; i++)
+    pce->comment += reader->readByte();
+
+  return true;
 }
 
 // ics_info
@@ -233,7 +308,12 @@ bool AacDecoder::decodeSectionInfo(AacBitReader *reader, AacDecodeInfo *info)
 bool AacDecoder::decodeScalefactorInfo(AacBitReader *reader, AacDecodeInfo *info)
 {
   uint8_t sf = info->globalGain;
+
   int sp = 0;  // Stereo position for intensity stereo
+  bool hasIntensityStereo = false;
+
+  int ne;  // Noise energy for PNS
+  bool hasNoise = false;
 
   auto sfd = AacScalefactorDecoder(reader);
 
@@ -251,20 +331,50 @@ bool AacDecoder::decodeScalefactorInfo(AacBitReader *reader, AacDecodeInfo *info
       }
 
       int offset;
-      if (!sfd.decode(&offset))
-        return false;  // Huffman decode failure
 
       if (AAC_IS_INTENSITY_CODEBOOK(hcb))
       {
         // Intensity stereo position info
 
+        if (!sfd.decode(&offset))
+          return false;  // Huffman decode failure
+
         sp += offset;
         info->sf.scalefactors[g][sfb] = sp + AAC_STEREO_POSITION_BIAS;
-        printf("  g %d  hcb 0x%X  sfb %2d  spOffset %2d  sp %d  spBiased %d\n", g, hcb, sfb, offset, sp, info->sf.scalefactors[g][sfb]);
+        printf("  g %d  hcb 0x%X  sfb %2d  type IS  spOffset %2d  sp %d\n", g, hcb, sfb, offset, sp);
+        hasIntensityStereo = true;
+      }
+      else if (hcb == AAC_HCB_NOISE)
+      {
+        // PNS (Perceptual Noise Substitution)
+
+        if (!hasNoise)
+        {
+          ne = reader->readUInt(9);  // Noise start point
+          hasNoise = true;
+        }
+        else
+        {
+          if (!sfd.decode(&offset))
+            return false;  // Huffman decode failure
+
+          ne += offset;
+          //info->sf.scalefactors[g][sfb] = ne;
+        }
+        printf("  g %d  hcb 0x%X  sfb %2d  type PNS  ne %d\n", g, hcb, sfb, ne);
+      }
+      else if (AAC_IS_UNKNOWN_CODEBOOK(hcb))
+      {
+        // Unknown codebook
+        // Some codebook numbers alter the bitstream layout, so it's not safe to continue.
+        return false;
       }
       else
       {
         // Normal scalefactor info
+
+        if (!sfd.decode(&offset))
+          return false;  // Huffman decode failure
 
         if ((offset < 0) && (-offset > sf))
           return false;  // Would underflow
@@ -273,7 +383,7 @@ bool AacDecoder::decodeScalefactorInfo(AacBitReader *reader, AacDecodeInfo *info
 
         sf += offset;
         info->sf.scalefactors[g][sfb] = sf;
-        printf("  g %d  hcb 0x%X  sfb %2d  sfOffset %2d  sf %d\n", g, hcb, sfb, offset, sf);
+        printf("  g %d  hcb 0x%X  sfb %2d  type SF  sfOffset %2d  sf %d\n", g, hcb, sfb, offset, sf);
       }
     }
   }
@@ -565,7 +675,7 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info, d
 
       // TODO: Since the scalefactors are limited to 8 bits, we could have a LUT for the gain
       double gain = pow(2, 0.25 * (info->sf.scalefactors[g][sfb] - 100));
-      printf("  Rescale group %d  sfb %d  sfbSampleStart %d  sfbSampleCount %d  gain %f\n", g, sfb, sfbSampleStart, sfbSampleCount, gain);
+      //printf("  Rescale group %d  sfb %d  sfbSampleStart %d  sfbSampleCount %d  gain %f\n", g, sfb, sfbSampleStart, sfbSampleCount, gain);
 
       for (unsigned int winOffset = 0; winOffset < winCount; winOffset++)
       {
@@ -578,7 +688,7 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info, d
         for (unsigned int k = 0; k < sfbSampleCount; k++)
         {
           x_rescal[sampleBase + k] = dequant[sampleBase + k] * gain;
-          printf("    x_rescal[%d] = %f  group %d  sfb %d  dequant %f  gain %f\n", sampleBase + k, x_rescal[sampleBase + k], g, sfb, dequant[sampleBase + k], gain);
+          //printf("    x_rescal[%d] = %f  group %d  sfb %d  dequant %f  gain %f\n", sampleBase + k, x_rescal[sampleBase + k], g, sfb, dequant[sampleBase + k], gain);
         }
       }
     }
@@ -606,7 +716,8 @@ void AacDecoder::getCpeChannelDecoders(uint8_t instance, AacChannelDecoder *deco
 {
   if (auto found = m_cpeDecoders.find(instance); found != m_cpeDecoders.end())
   {
-    decoders = found->second;
+    decoders[0] = found->second[0];
+    decoders[1] = found->second[1];
     return;
   }
 
@@ -741,7 +852,7 @@ bool AacDecoder::decodeBlock(AacBitReader *reader, AacAudioBlock *audio)
 
   while (!done && !reader->isComplete())
   {
-    unsigned int id = reader->readUInt(3);
+    AacElementId id = static_cast<AacElementId>(reader->readUInt(3));
     printf("Element ID: 0x%X\n", id);
 
     switch (id)
@@ -749,20 +860,24 @@ bool AacDecoder::decodeBlock(AacBitReader *reader, AacAudioBlock *audio)
     case AAC_ID_END:
       done = true;
       break;
-    case AAC_ID_FIL:
+    case AAC_ID_FIL:  // Fill element
       if (!decodeElementFIL(reader))
         return false;
       break;
-    case AAC_ID_SCE:
+    case AAC_ID_SCE:  // Single channel element
       if (!decodeElementSCE(reader, audio))
         return false;
       break;
-    case AAC_ID_CPE:
+    case AAC_ID_CPE:  // Channel pair element
       if (!decodeElementCPE(reader, audio))
         return false;
       break;
+    case AAC_ID_PCE:  // Program config element
+      if (!decodeElementPCE(reader))
+        return false;
+      break;
     default:
-      printf("Unhandled element ID %X\n", id);
+      printf("Unhandled element ID %X (%s - %s)\n", id, AacConstants::getElementNameShort(id), AacConstants::getElementNameLong(id));
       abort();
     }
   }
@@ -770,6 +885,26 @@ bool AacDecoder::decodeBlock(AacBitReader *reader, AacAudioBlock *audio)
   m_blockCount++;
 
   reader->alignToBit(0);
+
+  return true;
+}
+
+// Program config element
+bool AacDecoder::decodeElementPCE(AacBitReader *reader)
+{
+  AacProgramConfigInfo pce;
+
+  if (!readProgramConfigInfo(reader, &pce))
+    return false;
+
+  printf("--- PCE ---\n");
+  printf("instance       : %d\n", pce.instance);
+  printf("profile        : %d\n", pce.profile);
+  printf("sampleRateIndex: %d\n", pce.sampleRateIndex);
+  printf("front channels : %d\n", pce.frontChannelElementCount);
+  printf("side channels  : %d\n", pce.sideChannelElementCount);
+  printf("rear channels  : %d\n", pce.rearChannelElementCount);
+  printf("comment        : %s\n", pce.comment.c_str());
 
   return true;
 }

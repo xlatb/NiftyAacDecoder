@@ -11,6 +11,7 @@ class AacBitReader;
 class AacAudioBlock;
 class AacChannelDecoder;
 
+struct AacProgramConfigInfo;
 struct AacIcsInfo;
 struct AacMsMaskInfo;
 struct AacSectionInfo;
@@ -32,6 +33,7 @@ class AacDecoder
   std::unordered_map<uint8_t, AacChannelDecoder *>    m_sceDecoders;
   std::unordered_map<uint8_t, AacChannelDecoder *[2]> m_cpeDecoders;
 
+  bool readProgramConfigInfo(AacBitReader *reader, AacProgramConfigInfo *programConfigInfo);
   bool decodeIcsInfo(AacBitReader *reader, AacIcsInfo *info);
   bool decodeMsMaskInfo(AacBitReader *reader, const AacIcsInfo *ics, AacMsMaskInfo *msMask);
   bool decodeSectionInfo(AacBitReader *reader, AacDecodeInfo *info);
@@ -47,6 +49,7 @@ class AacDecoder
   bool applyMsJointStereo(const AacDecodeInfo *info, const AacMsMaskInfo *msMask, double leftSpec[AAC_SPECTRAL_SAMPLE_SIZE_LONG], double rightSpec[AAC_SPECTRAL_SAMPLE_SIZE_LONG]);
   bool applyIntensityJointStereo(const AacDecodeInfo *info, const AacMsMaskInfo *msMask, const double leftSpec[AAC_SPECTRAL_SAMPLE_SIZE_LONG], double rightSpec[AAC_SPECTRAL_SAMPLE_SIZE_LONG]);
 
+  bool decodeElementPCE(AacBitReader *reader);
   bool decodeElementFIL(AacBitReader *reader);
   bool decodeElementSCE(AacBitReader *reader, AacAudioBlock *audio);
   bool decodeElementCPE(AacBitReader *reader, AacAudioBlock *audio);
