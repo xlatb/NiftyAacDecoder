@@ -5,10 +5,14 @@
 
 #include "AacConstants.h"
 
+#define restrict __restrict
+
 constexpr double dequantizePower = 4.0 / 3.0;
 
-static double filter1024[AAC_XFORM_WIN_SIZE_LONG][AAC_SPECTRAL_SAMPLE_SIZE_LONG];
-static double filter128[AAC_XFORM_WIN_SIZE_SHORT][AAC_SPECTRAL_SAMPLE_SIZE_SHORT];
+// NOTE: The second and fourth quarters are mirrors of the first and third, so
+//  we only store the odd quarters of the filter.
+static double filter1024[2][AAC_XFORM_WIN_SIZE_LONG >> 2][AAC_SPECTRAL_SAMPLE_SIZE_LONG];
+static double filter128[2][AAC_XFORM_WIN_SIZE_SHORT >> 2][AAC_SPECTRAL_SAMPLE_SIZE_SHORT];
 static bool   filtersGenerated = false;
 
 void generateFilters(void)
@@ -17,21 +21,129 @@ void generateFilters(void)
 
   n0 = ((AAC_XFORM_WIN_SIZE_LONG / 2.0) + 1.0) / 2.0;
 
-  for (unsigned int s = 0; s < AAC_XFORM_WIN_SIZE_LONG; s++)  // Audio samples
+  // Long window first quarter
+  for (unsigned int s = 0; s < AAC_XFORM_WIN_SIZE_LONG >> 2; s++)  // Audio samples
     for (unsigned int k = 0; k < AAC_SPECTRAL_SAMPLE_SIZE_LONG; k++)  // Spectral coefficients
-      filter1024[s][k] = cos(((M_PI * 2.0) / AAC_XFORM_WIN_SIZE_LONG) * (s + n0) * (k + 0.5));
+      filter1024[0][s][k] = cos(((M_PI * 2.0) / AAC_XFORM_WIN_SIZE_LONG) * (s + n0) * (k + 0.5));
+
+  // Long window third quarter
+  for (unsigned int s = 0; s < AAC_XFORM_WIN_SIZE_LONG >> 2; s++)  // Audio samples
+    for (unsigned int k = 0; k < AAC_SPECTRAL_SAMPLE_SIZE_LONG; k++)  // Spectral coefficients
+      filter1024[1][s][k] = cos(((M_PI * 2.0) / AAC_XFORM_WIN_SIZE_LONG) * (s + (AAC_XFORM_WIN_SIZE_LONG >> 1) + n0) * (k + 0.5));
 
   n0 = ((AAC_XFORM_WIN_SIZE_SHORT / 2.0) + 1.0) / 2.0;
 
-  for (unsigned int s = 0; s < AAC_XFORM_WIN_SIZE_SHORT; s++)  // Audio samples
+  // Short window first quarter
+  for (unsigned int s = 0; s < AAC_XFORM_WIN_SIZE_SHORT >> 2; s++)  // Audio samples
     for (unsigned int k = 0; k < AAC_SPECTRAL_SAMPLE_SIZE_SHORT; k++)  // Spectral coefficients
-      filter128[s][k] = cos(((M_PI * 2.0) / AAC_XFORM_WIN_SIZE_SHORT) * (s + n0) * (k + 0.5));
+      filter128[0][s][k] = cos(((M_PI * 2.0) / AAC_XFORM_WIN_SIZE_SHORT) * (s + n0) * (k + 0.5));
+
+  // Short window third quarter
+  for (unsigned int s = 0; s < AAC_XFORM_WIN_SIZE_SHORT >> 2; s++)  // Audio samples
+    for (unsigned int k = 0; k < AAC_SPECTRAL_SAMPLE_SIZE_SHORT; k++)  // Spectral coefficients
+      filter128[1][s][k] = cos(((M_PI * 2.0) / AAC_XFORM_WIN_SIZE_SHORT) * (s + (AAC_XFORM_WIN_SIZE_SHORT >> 1) + n0) * (k + 0.5));
 
   filtersGenerated = true;
 }
 
 namespace AacAudioTools
 {
+  // IMDCT for long windows
+  void IMDCTLong(const double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_LONG], double samples[AAC_XFORM_WIN_SIZE_LONG])
+  {
+    if (!filtersGenerated)
+      generateFilters();
+
+    // Split temporal sample space into quarters
+    constexpr unsigned int q1 = AAC_XFORM_WIN_SIZE_LONG >> 2;
+    constexpr unsigned int q2 = AAC_XFORM_WIN_SIZE_LONG >> 1;
+    constexpr unsigned int q3 = q1 + q2;
+
+    // First quarter
+    for (unsigned int s = 0; s < q1; s++)  // Audio samples
+    {
+      double sum = 0.0;
+      for (unsigned int k = 0; k < AAC_SPECTRAL_SAMPLE_SIZE_LONG; k++)  // Spectral coefficients
+      {
+        double v = coefficients[k] * filter1024[0][s][k];
+        sum += v;
+      }
+
+      double sample = (2.0 / AAC_XFORM_WIN_SIZE_LONG) * sum;
+      samples[s] = sample;
+    }
+
+    // Third quarter
+    for (unsigned int s = 0; s < q1; s++)  // Audio samples
+    {
+      double sum = 0.0;
+      for (unsigned int k = 0; k < AAC_SPECTRAL_SAMPLE_SIZE_LONG; k++)  // Spectral coefficients
+      {
+        double v = coefficients[k] * filter1024[1][s][k];
+        sum += v;
+      }
+
+      double sample = (2.0 / AAC_XFORM_WIN_SIZE_LONG) * sum;
+      samples[q2 + s] = sample;
+    }
+
+    // Second quarter - First quarter mirrored and negated
+    for (unsigned int s = 0; s < q1; s++)
+      samples[q1 + s] = -samples[q1 - 1 - s];
+
+    // Fourth quarter - Third quarter mirrored
+    for (unsigned int s = 0; s < q1; s++)
+      samples[q3 + s] = samples[q3 - 1 - s];
+  }
+
+  // IMDCT for short windows
+  void IMDCTShort(const double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_SHORT], double samples[AAC_XFORM_WIN_SIZE_SHORT])
+  {
+    if (!filtersGenerated)
+      generateFilters();
+
+    // Split temporal sample space into quarters
+    constexpr unsigned int q1 = AAC_XFORM_WIN_SIZE_SHORT >> 2;
+    constexpr unsigned int q2 = AAC_XFORM_WIN_SIZE_SHORT >> 1;
+    constexpr unsigned int q3 = q1 + q2;
+
+    // First quarter
+    for (unsigned int s = 0; s < q1; s++)  // Audio samples
+    {
+      double sum = 0.0;
+      for (unsigned int k = 0; k < AAC_SPECTRAL_SAMPLE_SIZE_SHORT; k++)  // Spectral coefficients
+      {
+        double v = coefficients[k] * filter128[0][s][k];
+        sum += v;
+      }
+
+      double sample = (2.0 / AAC_XFORM_WIN_SIZE_SHORT) * sum;
+      samples[s] = sample;
+    }
+
+    // Third quarter
+    for (unsigned int s = 0; s < q1; s++)  // Audio samples
+    {
+      double sum = 0.0;
+      for (unsigned int k = 0; k < AAC_SPECTRAL_SAMPLE_SIZE_SHORT; k++)  // Spectral coefficients
+      {
+        double v = coefficients[k] * filter128[1][s][k];
+        sum += v;
+      }
+
+      double sample = (2.0 / AAC_XFORM_WIN_SIZE_SHORT) * sum;
+      samples[q2 + s] = sample;
+    }
+
+    // Second quarter - First quarter mirrored and negated
+    for (unsigned int s = 0; s < q1; s++)
+      samples[q1 + s] = -samples[q1 - 1 - s];
+
+    // Fourth quarter - Third quarter mirrored
+    for (unsigned int s = 0; s < q1; s++)
+      samples[q3 + s] = samples[q3 - 1 - s];
+  }
+
   // Dequantize (§ 10.3)
   void dequantize(const int16_t quant[AAC_SPECTRAL_SAMPLE_SIZE_LONG], double dequant[AAC_SPECTRAL_SAMPLE_SIZE_LONG])
   {
@@ -43,61 +155,7 @@ namespace AacAudioTools
     }
   }
 
-  // IMDCT for long windows
-  void IMDCTLong(const double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_LONG], double samples[AAC_XFORM_WIN_SIZE_LONG])
-  {
-    if (!filtersGenerated)
-      generateFilters();
-
-    //for (unsigned int s = 0; s < AAC_SPECTRAL_SAMPLE_SIZE_LONG; s++)
-    //  printf("  coefficients[%d] = %.3f\n", s, coefficients[s]);
-
-    for (unsigned int s = 0; s < AAC_XFORM_WIN_SIZE_LONG; s++)  // Audio samples
-    {
-      double sum = 0.0;
-      for (unsigned int k = 0; k < AAC_SPECTRAL_SAMPLE_SIZE_LONG; k++)  // Spectral coefficients
-      {
-        double v = coefficients[k] * filter1024[s][k];
-        sum += v;
-      }
-
-      //sum /= 2.0; // TODO: TEST - check output level
-      double sample = (2.0 / AAC_SPECTRAL_SAMPLE_SIZE_LONG) * sum;  // TODO: AAC_XFORM_WIN_SIZE_LONG?
-      samples[s] = sample;
-      //printf("  samples[%d] = %.3f  sum %.3f\n", s, sample, sum);
-      //printf("  samples[%d] = %.3f\n", s, sample);
-    }
-
-  }
-
-  // IMDCT for short windows
-  void IMDCTShort(const double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_SHORT], double samples[AAC_XFORM_WIN_SIZE_SHORT])
-  {
-    if (!filtersGenerated)
-      generateFilters();
-
-    //for (unsigned int s = 0; s < AAC_SPECTRAL_SAMPLE_SIZE_SHORT; s++)
-    //  printf("  coefficients[%d] = %.3f\n", s, coefficients[s]);
-
-    for (unsigned int s = 0; s < AAC_XFORM_WIN_SIZE_SHORT; s++)  // Audio samples
-    {
-      double sum = 0.0;
-      for (unsigned int k = 0; k < AAC_SPECTRAL_SAMPLE_SIZE_SHORT; k++)  // Spectral coefficients
-      {
-        double v = coefficients[k] * filter128[s][k];
-        sum += v;
-      }
-
-      //sum /= 2.0; // TODO: TEST - check output level
-      double sample = (2.0 / AAC_SPECTRAL_SAMPLE_SIZE_SHORT) * sum;  // TODO: AAC_XFORM_WIN_SIZE_SHORT?
-      samples[s] = sample;
-      //printf("  samples[%d] = %.3f  sum %.3f\n", s, sample, sum);
-      //printf("  samples[%d] = %.3f\n", s, sample);
-    }
-
-  }
-
-  void window(const double window[], double samples[], unsigned int count)
+  void window(const double *restrict window, double *restrict samples, unsigned int count)
   {
     for (unsigned int s = 0; s < count; s++)
       samples[s] *= window[s];
