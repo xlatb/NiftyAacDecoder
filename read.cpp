@@ -10,7 +10,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <endian.h>
+//#include <endian.h>
 
 #include "AacAdtsFrameHeader.h"
 #include "AacAdtsFrame.h"
@@ -118,18 +118,13 @@ int main(int argc, char *argv[])
     if (decoder.decodeBlock(frame.getReader(), &audio))
     {
       int16_t *buf;
+      audio.switchEndianness(std::endian::big);
       auto size = audio.getSampleBuffer(&buf);
-      auto sampleCount = audio.getSampleCount();
-      for (unsigned int s = 0; s < sampleCount; s++)
+      if (write(fd, buf, size) != static_cast<ssize_t>(size))
       {
-        uint16_t sample = htobe16(buf[s]);
-        write(fd, &sample, sizeof(sample));
+        fprintf(stderr, "write(): Short write\n");
+        abort();
       }
-//      if (write(fd, buf, size) != static_cast<ssize_t>(size))
-//      {
-//        fprintf(stderr, "write(): Short write\n");
-//        abort();
-//      }
     }
     else
     {

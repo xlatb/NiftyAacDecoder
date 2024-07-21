@@ -222,15 +222,15 @@ namespace AacAudioTools
     for (unsigned int n = 0; n < sampleCount; n++)
     {
       double y = coefficients[n];
-      printf("TNS: starting sample: n %d  y %f\n", n, y);
+      //printf("TNS: starting sample: n %d  y %f\n", n, y);
 
       for (unsigned int i = 1; (i <= order) && (i <= n); i++)
       {
-        printf("  prior sample: i %d  n %d  lpc[%d] %f  sample[%d] %f  product %f\n", i, n - i, i, lpc[i], n - i, coefficients[n - i], lpc[i] * coefficients[n - i]);
+        //printf("  prior sample: i %d  n %d  lpc[%d] %f  sample[%d] %f  product %f\n", i, n - i, i, lpc[i], n - i, coefficients[n - i], lpc[i] * coefficients[n - i]);
         y -= lpc[i] * coefficients[n - i];
       }
 
-      printf("  final y %f\n", y);
+      //printf("  final y %f\n", y);
 
       coefficients[n] = y;
     }

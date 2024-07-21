@@ -1,13 +1,13 @@
 BINS=read
 
-OBJS=AacConstants.o AacBitReader.o AacWindows.o AacAudioTools.o \
+OBJS=AacConstants.o AacBitReader.o AacWindows.o AacAudioTools.o AacImdct.o \
 	AacDecoder.o AacChannelDecoder.o AacScalefactorDecoder.o AacSpectrumDecoder.o \
 	AacAdtsFrameHeader.o AacAdtsFrameReader.o AacAdtsFrame.o \
 	AacAudioBlock.o
 
 BINOBJS=read.o
 
-CXXFLAGS=-std=c++17 -Wall -Wshadow -g `pkg-config --cflags sdl2`
+CXXFLAGS=-std=c++20 -Wall -Wshadow -g
 
 HUFFTABLES=tables/huffman-table-scalefactor.c \
 	tables/huffman-table-spectrum-1.c \
@@ -62,7 +62,7 @@ tables/huffman-table-spectrum-11.c: tables/huffman-table-spectrum-11.txt
 	./format-huffman-table.pl $< unsigned 2 16 > $@
 
 read: $(OBJS) read.o
-	g++ $(CXXFLAGS) -o read $(OBJS) read.o `pkg-config --libs sdl2`
+	g++ $(CXXFLAGS) -o read $(OBJS) read.o
 
 %.o: %.cpp *.h $(HUFFTABLES)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<

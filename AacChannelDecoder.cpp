@@ -6,6 +6,7 @@
 #include "AacStructs.h"
 #include "AacWindows.h"
 #include "AacAudioTools.h"
+#include "AacImdct.h"
 
 #include "AacChannelDecoder.h"
 
@@ -140,13 +141,13 @@ bool AacChannelDecoder::decodeAudioLongWindow(AacBitReader *reader, const AacDec
   if (info->ics->windowSequence != AAC_WINSEQ_8_SHORT)
   {
     // One long window
-    AacAudioTools::IMDCTLong(spec, samples);
+    AacImdctLong(spec, samples);
   }
   else
   {
     // Eight short windows
     for (unsigned int w = 0; w < 8; w++)
-      AacAudioTools::IMDCTShort(spec + (w * AAC_SPECTRAL_SAMPLE_SIZE_SHORT), samples + (w * AAC_XFORM_WIN_SIZE_SHORT));
+      AacImdctShort(spec + (w * AAC_SPECTRAL_SAMPLE_SIZE_SHORT), samples + (w * AAC_XFORM_WIN_SIZE_SHORT));
   }
 
   // Windowing (§ 15.3.2)
@@ -229,7 +230,7 @@ bool AacChannelDecoder::decodeAudioLongWindow(AacBitReader *reader, const AacDec
   {
     auto tmp = samples[s];
     samples[s] += m_oldSamples[s];
-    printf("  overlap[%d]: transform %.3f  old %.3f  sum %.3f\n", s, tmp, m_oldSamples[s], samples[s]);
+    //printf("  overlap[%d]: transform %.3f  old %.3f  sum %.3f\n", s, tmp, m_oldSamples[s], samples[s]);
   }
 
   // Save second half of previous samples for next time

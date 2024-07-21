@@ -289,14 +289,14 @@ bool AacDecoder::decodeSectionInfo(AacBitReader *reader, AacDecodeInfo *info)
     info->section.windowGroupSections[g].count = sec;
   }
 
-  printf("Window groups: %d groups\n", info->ics->windowGroupCount);
+  //printf("Window groups: %d groups\n", info->ics->windowGroupCount);
   for (unsigned int g = 0; g < info->ics->windowGroupCount; g++)
   {
-    printf("  windowGroups[%d]: winStart %d  winLength %d  sampleCount %d\n", g, info->ics->windowGroups[g].winStart, info->ics->windowGroups[g].winLength, info->section.windowGroups[g].sampleCount);
+    //printf("  windowGroups[%d]: winStart %d  winLength %d  sampleCount %d\n", g, info->ics->windowGroups[g].winStart, info->ics->windowGroups[g].winLength, info->section.windowGroups[g].sampleCount);
     for (unsigned int sec = 0; sec < info->section.windowGroupSections[g].count; sec++)
     {
       auto section = info->section.windowGroupSections[g].sections[sec];
-      printf("    group %d  section %d  codebook 0x%X  sfbStart %d  sfbLength %d  sampleStart %d  sampleCount %d  winSampleStart %d  winSampleCount %d\n", g, sec, info->section.sfbCodebooks[g][section.sfbStart], section.sfbStart, section.sfbLength, section.sampleStart, section.sampleCount, section.winSampleStart, section.winSampleCount);
+      //printf("    group %d  section %d  codebook 0x%X  sfbStart %d  sfbLength %d  sampleStart %d  sampleCount %d  winSampleStart %d  winSampleCount %d\n", g, sec, info->section.sfbCodebooks[g][section.sfbStart], section.sfbStart, section.sfbLength, section.sampleStart, section.sampleCount, section.winSampleStart, section.winSampleCount);
     }
   }
 
@@ -341,7 +341,7 @@ bool AacDecoder::decodeScalefactorInfo(AacBitReader *reader, AacDecodeInfo *info
 
         sp += offset;
         info->sf.scalefactors[g][sfb] = sp + AAC_STEREO_POSITION_BIAS;
-        printf("  g %d  hcb 0x%X  sfb %2d  type IS  spOffset %2d  sp %d\n", g, hcb, sfb, offset, sp);
+        //printf("  g %d  hcb 0x%X  sfb %2d  type IS  spOffset %2d  sp %d\n", g, hcb, sfb, offset, sp);
         hasIntensityStereo = true;
       }
       else if (hcb == AAC_HCB_NOISE)
@@ -361,7 +361,7 @@ bool AacDecoder::decodeScalefactorInfo(AacBitReader *reader, AacDecodeInfo *info
           ne += offset;
           //info->sf.scalefactors[g][sfb] = ne;
         }
-        printf("  g %d  hcb 0x%X  sfb %2d  type PNS  ne %d\n", g, hcb, sfb, ne);
+        //printf("  g %d  hcb 0x%X  sfb %2d  type PNS  ne %d\n", g, hcb, sfb, ne);
       }
       else if (AAC_IS_UNKNOWN_CODEBOOK(hcb))
       {
@@ -383,7 +383,7 @@ bool AacDecoder::decodeScalefactorInfo(AacBitReader *reader, AacDecodeInfo *info
 
         sf += offset;
         info->sf.scalefactors[g][sfb] = sf;
-        printf("  g %d  hcb 0x%X  sfb %2d  type SF  sfOffset %2d  sf %d\n", g, hcb, sfb, offset, sf);
+        //printf("  g %d  hcb 0x%X  sfb %2d  type SF  sfOffset %2d  sf %d\n", g, hcb, sfb, offset, sf);
       }
     }
   }
@@ -596,7 +596,7 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info, d
   // TODO: Max abs(value) of each element of quant is 8191. Should we be saturating them?
   for (unsigned int i = 0; i < 1024; i++)
   {
-    printf("  quant[%d]: %d\n", i, quant[i]);
+    //printf("  quant[%d]: %d\n", i, quant[i]);
   }
 
   // Deinterlace short blocks if needed
@@ -638,8 +638,8 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info, d
       }
     }
 
-    for (unsigned int i = 0; i < 1024; i++)
-      printf("  deinterlaced[%d]: %d\n", i, quant[i]);
+    //for (unsigned int i = 0; i < 1024; i++)
+    //  printf("  deinterlaced[%d]: %d\n", i, quant[i]);
   }
 
   // Dequantize
