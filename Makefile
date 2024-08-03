@@ -1,11 +1,11 @@
-BINS=read
+BINS=aac-to-wav read
 
 OBJS=AacConstants.o AacBitReader.o AacWindows.o AacAudioTools.o AacImdct.o \
 	AacDecoder.o AacChannelDecoder.o AacScalefactorDecoder.o AacSpectrumDecoder.o \
 	AacAdtsFrameHeader.o AacAdtsFrameReader.o AacAdtsFrame.o \
-	AacAudioBlock.o
+	AacAudioBlock.o WavWriter.o
 
-BINOBJS=read.o
+BINOBJS=aac-to-wav.o read.o
 
 CXXFLAGS=-std=c++20 -Wall -Wshadow -g
 
@@ -62,7 +62,10 @@ tables/huffman-table-spectrum-11.c: tables/huffman-table-spectrum-11.txt
 	./format-huffman-table.pl $< unsigned 2 16 > $@
 
 read: $(OBJS) read.o
-	g++ $(CXXFLAGS) -o read $(OBJS) read.o
+	g++ $(CXXFLAGS) -o $@ $(OBJS) read.o
+
+aac-to-wav: $(OBJS) aac-to-wav.o
+	g++ $(CXXFLAGS) -o $@ $(OBJS) aac-to-wav.o
 
 %.o: %.cpp *.h $(HUFFTABLES)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
