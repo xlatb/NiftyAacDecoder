@@ -75,8 +75,9 @@ enum
   AAC_HCB_INTENSITY  = 15,  // INTENSITY_HCB
 };
 
-#define AAC_IS_INTENSITY_CODEBOOK(hcb) (hcb >= AAC_HCB_INTENSITY2)
-#define AAC_IS_UNKNOWN_CODEBOOK(hcb)   (hcb == AAC_HCB_RESERVED)
+#define AAC_IS_INTENSITY_CODEBOOK(hcb)   (hcb >= AAC_HCB_INTENSITY2)
+#define AAC_IS_UNKNOWN_CODEBOOK(hcb)     (hcb == AAC_HCB_RESERVED)
+#define AAC_IS_SCALEFACTOR_CODEBOOK(hcb) (((hcb) > AAC_HCB_ZERO) && ((hcb) < AAC_HCB_RESERVED))
 
 // Table 44
 // The names feel a bit misleading. LONG_START is for transitioning to short

@@ -656,7 +656,7 @@ bool AacDecoder::decodeSpectralData(AacBitReader *reader, AacDecodeInfo *info, d
     for (unsigned int sfb = 0; sfb < info->ics->sfbCount; sfb++)
     {
       unsigned int hcb = info->section.sfbCodebooks[g][sfb];
-      if ((hcb == AAC_HCB_ZERO) || AAC_IS_INTENSITY_CODEBOOK(hcb))
+      if (!AAC_IS_SCALEFACTOR_CODEBOOK(hcb))
         continue;  // No scalefactor for this band
 
       unsigned int sfbSampleStart, sfbSampleCount;
