@@ -3,6 +3,12 @@
 #ifndef AAC_CONSTANTS_H
 #define AAC_CONSTANTS_H
 
+#if defined(DEBUG)
+#  define DEBUGF(...) fprintf(stderr, __VA_ARGS__)
+#else
+#  define DEBUGF(...)
+#endif
+
 #define AAC_MAX_SFB_COUNT     51
 
 #define AAC_MAX_WINDOW_COUNT  8

@@ -7,7 +7,8 @@ OBJS=AacConstants.o AacBitReader.o AacWindows.o AacAudioTools.o AacImdct.o \
 
 BINOBJS=aac-to-wav.o read.o
 
-CXXFLAGS=-std=c++20 -Wall -Wshadow -g
+#CXXFLAGS=-std=c++20 -Wall -Wshadow -g -D DEBUG=1
+CXXFLAGS=-std=c++20 -Wall -Wshadow -O2
 
 HUFFTABLES=tables/huffman-table-scalefactor.c \
 	tables/huffman-table-spectrum-1.c \

@@ -21,7 +21,7 @@ result in a bit of quality loss:
 
 ## How do I run it?
 
-Run aac-to-wav, supplying a command-line argumnet with the filename of the
+Run aac-to-wav, supplying a command-line argument with the filename of the
 file to decode:
 
 `$ ./aac-to-wav my-audio-file.aac`

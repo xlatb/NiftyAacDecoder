@@ -29,7 +29,7 @@ void AacChannelDecoder::reset(void)
 
 bool AacChannelDecoder::applyTnsLongWindow(double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_LONG], const AacDecodeInfo *info)
 {
-  printf("TNS for long window...\n");
+  DEBUGF("TNS for long window...\n");
 
   unsigned int w = 0;  // TODO
 
@@ -49,7 +49,7 @@ bool AacChannelDecoder::applyTnsLongWindow(double coefficients[AAC_SPECTRAL_SAMP
     unsigned int sampleEnd   = m_scalefactorBandInfo->longWindow->offsets[std::min(tnsMaxBand, std::min(sfbEnd, info->ics->sfbCount))];
     unsigned int sampleCount = sampleEnd - sampleStart;
 
-    printf("  filter %d  order %d  isDownward %s  sfbStart %d  sfbEnd %d  tnsMaxBand %d  sampleStart %d  sampleEnd %d  sampleCount %d\n", f, filter.order, (filter.isDownward ? "true" : "false"), sfbStart, sfbEnd, tnsMaxBand, sampleStart, sampleEnd, sampleCount);
+    DEBUGF("  filter %d  order %d  isDownward %s  sfbStart %d  sfbEnd %d  tnsMaxBand %d  sampleStart %d  sampleEnd %d  sampleCount %d\n", f, filter.order, (filter.isDownward ? "true" : "false"), sfbStart, sfbEnd, tnsMaxBand, sampleStart, sampleEnd, sampleCount);
 
     if (sampleCount == 0)
       continue;  // No work to do
@@ -74,7 +74,7 @@ bool AacChannelDecoder::applyTnsLongWindow(double coefficients[AAC_SPECTRAL_SAMP
 
 bool AacChannelDecoder::applyTnsShortWindow(double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_SHORT], const AacDecodeInfo *info)
 {
-  printf("TNS for short window...\n");
+  DEBUGF("TNS for short window...\n");
 
   for (unsigned int w = 0; w < info->ics->windowCount; w++)
   {
@@ -94,7 +94,7 @@ bool AacChannelDecoder::applyTnsShortWindow(double coefficients[AAC_SPECTRAL_SAM
       unsigned int sampleEnd   = m_scalefactorBandInfo->shortWindow->offsets[std::min(tnsMaxBand, std::min(sfbEnd, info->ics->sfbCount))];
       unsigned int sampleCount = sampleEnd - sampleStart;
 
-      printf("  filter %d  order %d  isDownward %s  sfbStart %d  sfbEnd %d  tnsMaxBand %d  sampleStart %d  sampleEnd %d  sampleCount %d\n", f, filter.order, (filter.isDownward ? "true" : "false"), sfbStart, sfbEnd, tnsMaxBand, sampleStart, sampleEnd, sampleCount);
+      DEBUGF("  filter %d  order %d  isDownward %s  sfbStart %d  sfbEnd %d  tnsMaxBand %d  sampleStart %d  sampleEnd %d  sampleCount %d\n", f, filter.order, (filter.isDownward ? "true" : "false"), sfbStart, sfbEnd, tnsMaxBand, sampleStart, sampleEnd, sampleCount);
 
       if (sampleCount == 0)
         continue;  // No work to do
@@ -136,7 +136,7 @@ bool AacChannelDecoder::decodeAudioLongWindow(AacBitReader *reader, const AacDec
   }
 
   // IMDCT
-  printf("Frame %d samples\n", m_blockCount);
+  DEBUGF("Frame %d samples\n", m_blockCount);
   double samples[AAC_XFORM_WIN_SIZE_LONG];
   if (info->ics->windowSequence != AAC_WINSEQ_8_SHORT)
   {
@@ -230,7 +230,7 @@ bool AacChannelDecoder::decodeAudioLongWindow(AacBitReader *reader, const AacDec
   {
     auto tmp = samples[s];
     samples[s] += m_oldSamples[s];
-    //printf("  overlap[%d]: transform %.3f  old %.3f  sum %.3f\n", s, tmp, m_oldSamples[s], samples[s]);
+    //DEBUGF("  overlap[%d]: transform %.3f  old %.3f  sum %.3f\n", s, tmp, m_oldSamples[s], samples[s]);
   }
 
   // Save second half of previous samples for next time

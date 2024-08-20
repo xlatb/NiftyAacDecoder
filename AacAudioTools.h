@@ -8,9 +8,6 @@ namespace AacAudioTools
 {
   extern void dequantize(const int16_t quant[AAC_SPECTRAL_SAMPLE_SIZE_LONG], double dequant[AAC_SPECTRAL_SAMPLE_SIZE_LONG]);
 
-  extern void IMDCTLong(const double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_LONG], double samples[AAC_XFORM_WIN_SIZE_LONG]);
-  extern void IMDCTShort(const double coefficients[AAC_SPECTRAL_SAMPLE_SIZE_SHORT], double samples[AAC_XFORM_WIN_SIZE_SHORT]);
-
   extern void window(const double window[], double samples[], unsigned int count);
 
   extern void transformTnsCoefficients(const int8_t quant[], double lpc[], unsigned int bitCount, unsigned int order);

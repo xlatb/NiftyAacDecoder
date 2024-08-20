@@ -39,7 +39,7 @@ namespace AacAudioTools
     for (unsigned int o = 0; o < order; o++)
     {
       dequant[o] = sin(quant[o] / ((quant[o] >= 0) ? iqfac : iqfac_m));
-      printf("  TNS: coef[%d] %d  dequant %f\n", o, quant[o], dequant[o]);
+      DEBUGF("  TNS: coef[%d] %d  dequant %f\n", o, quant[o], dequant[o]);
     }
 
     // Conversion to LPC
@@ -59,7 +59,7 @@ namespace AacAudioTools
 
     // NOTE: We end up with 1 more LPC coefficient than our 'order'
     for (unsigned int o = 0; o <= order; o++)
-     printf("  TNS: lpc[%d] %f\n", o, lpc[o]);
+     DEBUGF("  TNS: lpc[%d] %f\n", o, lpc[o]);
   }
 
   void tnsFilterUpwards(double *coefficients, unsigned int sampleCount, unsigned int order, const double lpc[])
@@ -89,15 +89,15 @@ namespace AacAudioTools
     for (unsigned int n = 0; n < sampleCount; n++)
     {
       double y = coefficients[n];
-      //printf("TNS: starting sample: n %d  y %f\n", n, y);
+      //DEBUGF("TNS: starting sample: n %d  y %f\n", n, y);
 
       for (unsigned int i = 1; (i <= order) && (i <= n); i++)
       {
-        //printf("  prior sample: i %d  n %d  lpc[%d] %f  sample[%d] %f  product %f\n", i, n - i, i, lpc[i], n - i, coefficients[n - i], lpc[i] * coefficients[n - i]);
+        //DEBUGF("  prior sample: i %d  n %d  lpc[%d] %f  sample[%d] %f  product %f\n", i, n - i, i, lpc[i], n - i, coefficients[n - i], lpc[i] * coefficients[n - i]);
         y -= lpc[i] * coefficients[n - i];
       }
 
-      //printf("  final y %f\n", y);
+      //DEBUGF("  final y %f\n", y);
 
       coefficients[n] = y;
     }
@@ -116,15 +116,15 @@ namespace AacAudioTools
     for (unsigned int n = 0; n < sampleCount; n++)
     {
       double y = (coefficients - n)[0];
-      //printf("TNS: starting sample: n %d  y %f\n", n, y);
+      //DEBUGF("TNS: starting sample: n %d  y %f\n", n, y);
 
       for (unsigned int i = 1; (i <= order) && (i <= n); i++)
       {
-        //printf("  prior sample: i %d  n %d  lpc[%d] %f  sample[%d] %f  product %f\n", i, n + i, i, lpc[i], n + i, (coefficients - n + i)[0], lpc[i] * (coefficients - n + i)[0]);
+        //DEBUGF("  prior sample: i %d  n %d  lpc[%d] %f  sample[%d] %f  product %f\n", i, n + i, i, lpc[i], n + i, (coefficients - n + i)[0], lpc[i] * (coefficients - n + i)[0]);
         y -= lpc[i] * (coefficients - n + i)[0];
       }
 
-      //printf("  final y %f\n", y);
+      //DEBUGF("  final y %f\n", y);
 
       (coefficients - n)[0] = y;
     }
