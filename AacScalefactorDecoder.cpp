@@ -16,7 +16,7 @@ static const AacScalefactorHuffman huffmanTable =
 
 bool AacScalefactorDecoder::decode(int *scalefactorIndex)
 {
-  unsigned int codeword = m_reader->readUInt(1);
+  unsigned int codeword = m_reader->readBit();
   unsigned int len = 1;
   unsigned int i = 0;
 

@@ -94,7 +94,7 @@ bool AacSpectrumDecoder::decode2(unsigned int tableNum, int out[2])
 
   const AacSpectrumHuffman2 *huffmanTable = reinterpret_cast<const AacSpectrumHuffman2 *>(codebooks[tableNum].codebook);
 
-  unsigned int codeword = m_reader->readUInt(1);
+  unsigned int codeword = m_reader->readBit();
   unsigned int len = 1;
   unsigned int i = 0;
 
@@ -124,8 +124,8 @@ bool AacSpectrumDecoder::decode2(unsigned int tableNum, int out[2])
         if (!codebooks[tableNum].isSigned)
         {
           // Read extra sign bits for non-zero coefficients
-          if (v0 != 0) sign0 = m_reader->readUInt(1);
-          if (v1 != 0) sign1 = m_reader->readUInt(1);
+          if (v0 != 0) sign0 = m_reader->readBit();
+          if (v1 != 0) sign1 = m_reader->readBit();
         }
 
         // Read escapes if needed
@@ -164,7 +164,7 @@ bool AacSpectrumDecoder::decode4(unsigned int tableNum, int out[4])
 
   const AacSpectrumHuffman4 *huffmanTable = reinterpret_cast<const AacSpectrumHuffman4 *>(codebooks[tableNum].codebook);
 
-  unsigned int codeword = m_reader->readUInt(1);
+  unsigned int codeword = m_reader->readBit();
   unsigned int len = 1;
   unsigned int i = 0;
 
@@ -193,10 +193,10 @@ bool AacSpectrumDecoder::decode4(unsigned int tableNum, int out[4])
         if (!codebooks[tableNum].isSigned)
         {
           // Read extra sign bits for non-zero coefficients
-          if ((v0 != 0) && m_reader->readUInt(1)) v0 = -v0;
-          if ((v1 != 0) && m_reader->readUInt(1)) v1 = -v1;
-          if ((v2 != 0) && m_reader->readUInt(1)) v2 = -v2;
-          if ((v3 != 0) && m_reader->readUInt(1)) v3 = -v3;
+          if ((v0 != 0) && m_reader->readBit()) v0 = -v0;
+          if ((v1 != 0) && m_reader->readBit()) v1 = -v1;
+          if ((v2 != 0) && m_reader->readBit()) v2 = -v2;
+          if ((v3 != 0) && m_reader->readBit()) v3 = -v3;
         }
 
         out[0] = v0;
@@ -221,7 +221,7 @@ unsigned int AacSpectrumDecoder::decodeEscape(void)
 {
   // Count the number of consecutive 1 bits
   unsigned int len = 0;
-  while (m_reader->readUInt(1))
+  while (m_reader->readBit())
   {
     len++;
   }

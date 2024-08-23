@@ -58,25 +58,25 @@ bool AacDecoder::readProgramConfigInfo(AacBitReader *reader, AacProgramConfigInf
   pce->channelCouplingElementCount = reader->readUInt(4);
   assert(pce->channelCouplingElementCount <= AAC_PCE_MAX_CCES);
 
-  pce->hasMonoMixdown = reader->readUInt(1);
+  pce->hasMonoMixdown = reader->readBit();
   if (pce->hasMonoMixdown)
     pce->monoMixdown = reader->readUInt(4);
 
-  pce->hasStereoMixdown = reader->readUInt(1);
+  pce->hasStereoMixdown = reader->readBit();
   if (pce->hasStereoMixdown)
     pce->stereoMixdown = reader->readUInt(4);
 
-  pce->hasMatrixMixdown = reader->readUInt(1);
+  pce->hasMatrixMixdown = reader->readBit();
   if (pce->hasMatrixMixdown)
   {
     pce->matrixMixdownIndex = reader->readUInt(2);
-    pce->pseudoSurroundEnabled = reader->readUInt(1);
+    pce->pseudoSurroundEnabled = reader->readBit();
   }
 
   // Identifiers for each front channel element
   for (unsigned int i = 0; i < pce->frontChannelElementCount; i++)
   {
-    AacElementId type = reader->readUInt(1) ? AAC_ID_CPE : AAC_ID_SCE;
+    AacElementId type = reader->readBit() ? AAC_ID_CPE : AAC_ID_SCE;
     uint8_t instance = reader->readUInt(4);
 
     pce->frontChannelElements[i].type     = type;
@@ -86,7 +86,7 @@ bool AacDecoder::readProgramConfigInfo(AacBitReader *reader, AacProgramConfigInf
   // Identifiers for each side channel element
   for (unsigned int i = 0; i < pce->sideChannelElementCount; i++)
   {
-    AacElementId type = reader->readUInt(1) ? AAC_ID_CPE : AAC_ID_SCE;
+    AacElementId type = reader->readBit() ? AAC_ID_CPE : AAC_ID_SCE;
     uint8_t instance = reader->readUInt(4);
 
     pce->sideChannelElements[i].type     = type;
@@ -96,7 +96,7 @@ bool AacDecoder::readProgramConfigInfo(AacBitReader *reader, AacProgramConfigInf
   // Identifiers for each rear channel element
   for (unsigned int i = 0; i < pce->rearChannelElementCount; i++)
   {
-    AacElementId type = reader->readUInt(1) ? AAC_ID_CPE : AAC_ID_SCE;
+    AacElementId type = reader->readBit() ? AAC_ID_CPE : AAC_ID_SCE;
     uint8_t instance = reader->readUInt(4);
 
     pce->rearChannelElements[i].type     = type;
@@ -123,11 +123,11 @@ bool AacDecoder::readProgramConfigInfo(AacBitReader *reader, AacProgramConfigInf
 // ics_info
 bool AacDecoder::decodeIcsInfo(AacBitReader *reader, AacIcsInfo *ics)
 {
-  unsigned int reserved = reader->readUInt(1);
+  unsigned int reserved = reader->readBit();
   assert(reserved == 0);  // Always zero?
 
   ics->windowSequence = static_cast<AacWindowSequence>(reader->readUInt(2));
-  ics->windowShape    = static_cast<AacWindowShape>(reader->readUInt(1));
+  ics->windowShape    = static_cast<AacWindowShape>(reader->readBit());
 
   ics->windowGroupCount = 1;
   ics->windowGroups[0].winStart = 0;
@@ -171,7 +171,7 @@ bool AacDecoder::decodeIcsInfo(AacBitReader *reader, AacIcsInfo *ics)
     assert(ics->sfbCount <= m_scalefactorBandInfo->longWindow->swbCount);
     ics->samplesPerWindow = m_scalefactorBandInfo->longWindow->offsets[ics->sfbCount];
 
-    bool predictorDataPresent = reader->readUInt(1);
+    bool predictorDataPresent = reader->readBit();
     assert(predictorDataPresent == false);  // Not allowed in LC (low-complexity)
 
     ics->windowCount = 1;
@@ -201,7 +201,7 @@ bool AacDecoder::decodeMsMaskInfo(AacBitReader *reader, const AacIcsInfo *ics, A
     {
       for (unsigned int sfb = 0; sfb < ics->sfbCount; sfb++)
       {
-        if (reader->readUInt(1))
+        if (reader->readBit())
           msMask->sfbMask[sfb] |= (0x1 << g);
       }
     }
@@ -394,7 +394,7 @@ bool AacDecoder::decodeScalefactorInfo(AacBitReader *reader, AacDecodeInfo *info
 // pulse_data
 bool AacDecoder::decodePulseInfo(AacBitReader *reader, AacDecodeInfo *info)
 {
-  bool hasPulses = reader->readUInt(1);
+  bool hasPulses = reader->readBit();
   if (!hasPulses)
   {
     info->pulse.pulseCount = 0;
@@ -424,7 +424,7 @@ bool AacDecoder::decodePulseInfo(AacBitReader *reader, AacDecodeInfo *info)
 // tns_data()
 bool AacDecoder::decodeTnsInfo(AacBitReader *reader, AacDecodeInfo *info)
 {
-  bool hasTns = reader->readUInt(1);
+  bool hasTns = reader->readBit();
   if (!hasTns)
   {
     info->tns.isEnabled = false;
@@ -460,7 +460,7 @@ bool AacDecoder::decodeTnsInfo(AacBitReader *reader, AacDecodeInfo *info)
     info->tns.filterCount[w] = filterCount;
 
     if (filterCount > 0)
-      info->tns.coefficientBits[w] = reader->readUInt(1) + 3;
+      info->tns.coefficientBits[w] = reader->readBit() + 3;
 
     for (unsigned int f = 0; f < filterCount; f++)
     {
@@ -475,9 +475,9 @@ bool AacDecoder::decodeTnsInfo(AacBitReader *reader, AacDecodeInfo *info)
 
       if (order)
       {
-        info->tns.filters[w][f].isDownward = reader->readUInt(1);
+        info->tns.filters[w][f].isDownward = reader->readBit();
 
-        bool compress = reader->readUInt(1);
+        bool compress = reader->readBit();
 
         unsigned readBits = info->tns.coefficientBits[w] - ((compress) ? 1 : 0);
 
@@ -954,7 +954,7 @@ bool AacDecoder::decodeElementSCE(AacBitReader *reader, AacAudioBlock *audio)
   if (!decodeTnsInfo(reader, &info))
     return false;
 
-  bool hasGainControl = reader->readUInt(1);
+  bool hasGainControl = reader->readBit();
   if (hasGainControl)
     return false;  // Not allowed in LC profile
 
@@ -989,7 +989,7 @@ bool AacDecoder::decodeElementCPE(AacBitReader *reader, AacAudioBlock *audio)
   unsigned int identifier = reader->readUInt(4);
   getCpeChannelDecoders(identifier, channelDecoders);
 
-  bool commonWindow = reader->readUInt(1);
+  bool commonWindow = reader->readBit();
 
   if (commonWindow)
   {
@@ -1034,7 +1034,7 @@ bool AacDecoder::decodeElementCPE(AacBitReader *reader, AacAudioBlock *audio)
     if (!decodeTnsInfo(reader, &info[ch]))
       return false;
 
-    bool hasGainControl = reader->readUInt(1);
+    bool hasGainControl = reader->readBit();
     if (hasGainControl)
       return false;  // Not allowed in LC profile
 
